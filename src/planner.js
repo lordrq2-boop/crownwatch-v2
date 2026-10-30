@@ -77,7 +77,7 @@ export function planReminders(state, now) {
           level: i === 0 ? 'due' : 'nag',
           index: i,
           title: i === 0 ? task.title : `${task.title} is still not done`,
-          body: session ? (i === 0 ? 'Timer finished. Open the app and tap Finish.' : 'Your timer finished. Tap to finish it.') : task.proof === 'steps' ? (i === 0 ? `Due at ${fmtTime(task.time)}. Open the app to check your steps.` : `Reminder ${i} of ${NAG_COUNT}. Open the app to check your steps.`) : i === 0 ? `Due at ${fmtTime(task.time)}. Tap to finish it.` : `Reminder ${i} of ${NAG_COUNT}. Tap to finish it.`,
+          body: session ? (i === 0 ? 'Timer finished. Open the app and tap Finish.' : 'Your timer finished. Tap to finish it.') : i === 0 ? `Due at ${fmtTime(task.time)}. Tap to finish it.` : `Reminder ${i} of ${NAG_COUNT}. Tap to finish it.`,
           taskId: task.id,
           dateKey: key,
         });

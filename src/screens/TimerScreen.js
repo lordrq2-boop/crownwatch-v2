@@ -7,7 +7,7 @@ import { categoryOf } from '../categories';
 import { fmtClockDuration } from '../dates';
 
 // A timer session. It runs from a saved start time, so closing the app does not pause it.
-export default function TimerScreen({ item, session, onFinish, onCancel }) {
+export default function TimerScreen({ item, session, onFinish, onCancel, onBack }) {
   const insets = useInsets();
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -40,11 +40,15 @@ export default function TimerScreen({ item, session, onFinish, onCancel }) {
 
       <View style={{ flex: 1 }} />
       {complete ? (
-        <Btn label="Finish" icon="checkmark" onPress={onFinish} />
+        <>
+          <Btn label="Finish" icon="checkmark" onPress={onFinish} />
+          <Btn label="Back (keep timer)" kind="quiet" small onPress={onBack} style={{ marginTop: 10 }} />
+        </>
       ) : (
         <>
           <Text style={[type.small, { textAlign: 'center', marginBottom: 14 }]}>Keep going. You can leave the app, the timer keeps counting.</Text>
-          <Btn label="Cancel this session" kind="quiet" small onPress={onCancel} />
+          <Btn label="Back (keep timer running)" kind="quiet" small onPress={onBack} />
+          <Btn label="Cancel this session" kind="quiet" small onPress={onCancel} style={{ marginTop: 8 }} />
         </>
       )}
     </View>

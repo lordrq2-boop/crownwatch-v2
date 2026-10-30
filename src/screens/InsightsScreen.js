@@ -72,7 +72,7 @@ function Heat({ days }) {
   );
 }
 
-export default function InsightsScreen({ state, now }) {
+export default function InsightsScreen({ state, now, healthWeek }) {
   const insets = useInsets();
   const st = streaks(state, now);
   const ws = weekSummary(state, now);
@@ -88,6 +88,14 @@ export default function InsightsScreen({ state, now }) {
       <FadeUp>
         <Text style={type.display}>Insights</Text>
         <Text style={[type.small, { marginTop: 4 }]}>How consistent you have been.</Text>
+      </FadeUp>
+
+      <FadeUp delay={50}>
+        <SectionHeader title="Health this week" right="Monday to today" />
+        <View style={styles.grid}>
+          <Stat icon="footsteps-outline" label="TOTAL STEPS" value={healthWeek?.steps == null ? '—' : healthWeek.steps.toLocaleString()} sub="Health Connect" delay={90} />
+          <Stat icon="flame-outline" label="ACTIVE CALORIES" value={healthWeek?.activeCalories == null ? '—' : Math.round(healthWeek.activeCalories)} suffix=" kcal" sub="Health Connect" delay={130} />
+        </View>
       </FadeUp>
 
       {empty ? (

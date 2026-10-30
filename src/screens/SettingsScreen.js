@@ -1,11 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, Switch, Linking } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet, Switch, Linking, Alert } from 'react-native';
 import { Btn, Card, Icon, IconBadge, Pill, SectionHeader, useInsets } from '../ui';
 import { ScreenIn } from '../anim';
 import { colors, radius, type } from '../theme';
-import { MAX_PASSES, UNDO_WINDOW_MINUTES } from '../planner';
 import { clearLastError, readLastError } from '../errors';
-import { fmtSteps } from '../categories';
 import { healthMessage } from '../health';
 
 function Row({ icon, title, sub, right, last }) {
@@ -35,7 +33,7 @@ function Segment({ options, value, onChange }) {
 
 const SWITCH = { trackColor: { true: colors.goldDeep, false: colors.panelHi } };
 
-export default function SettingsScreen({ paired, notif, testMsg, settings, passesLeft, health, steps, onBack, onPair, onRecheck, onTest, onChange, onPickRingtone, onConnectHealth, onOpenHealth }) {
+export default function SettingsScreen({ paired, notif, testMsg, settings, health, stepGoal, onBack, onPair, onRecheck, onTest, onChange, onPickRingtone, onConnectHealth, onRefreshHealth, onOpenHealth, onResetTestData }) {
   const insets = useInsets();
   const [lastError, setLastError] = useState(null);
   useEffect(() => { readLastError().then(setLastError); }, []);
@@ -111,21 +109,37 @@ export default function SettingsScreen({ paired, notif, testMsg, settings, passe
             />
           </Card>
 
-          <SectionHeader title="Steps (Health Connect)" />
+          <SectionHeader title="Health Connect" />
           <Card style={{ paddingVertical: 4 }}>
             <Row
-              icon="footsteps-outline"
-              title="Health Connect"
-              sub={health.state === 'ready' ? (steps === null || steps === undefined ? 'Connected. Steps could not be read just now.' : `Connected. ${fmtSteps(steps)} steps so far today.`) : healthMessage(health) || 'Checking...'}
+              icon="heart-outline"
+              title="Activity data"
+              sub={health.state === 'ready' ? 'Connected. CrownWatch reads the health measurements you allow.' : healthMessage(health) || 'Checking Health Connect...'}
               right={<Pill label={health.state === 'ready' ? 'Connected' : 'Not connected'} tone={health.state === 'ready' ? 'gold' : 'pink'} />}
-              last
             />
+            <View style={{ paddingHorizontal: 4, paddingBottom: 12 }}>
+              {[
+                ['Steps', health.permissions?.steps],
+                ['Active calories', health.permissions?.calories],
+                ['Distance', health.permissions?.distance],
+                ['Body weight', health.permissions?.weight],
+              ].map(([label, allowed]) => (
+                <View key={label} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 }}>
+                  <Text style={type.small}>{label}</Text>
+                  <Pill label={allowed ? 'Allowed' : 'Not allowed'} tone={allowed ? 'gold' : 'muted'} />
+                </View>
+              ))}
+            </View>
           </Card>
-          <View style={{ flexDirection: 'row', marginTop: 12 }}>
-            {health.state !== 'ready' ? <Btn label="Connect" icon="link-outline" small onPress={onConnectHealth} /> : null}
-            <Btn label="Open Health Connect" kind="quiet" small onPress={onOpenHealth} style={health.state !== 'ready' ? { marginLeft: 8 } : null} />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 12 }}>
+            <Btn label="Connect / update access" icon="link-outline" small onPress={onConnectHealth} />
+            <Btn label="Refresh data" kind="quiet" small onPress={onRefreshHealth} style={{ marginLeft: 8 }} />
+            <Btn label="Open Health Connect" kind="quiet" small onPress={onOpenHealth} style={{ marginTop: 8 }} />
           </View>
-          <Text style={[type.small, { marginTop: 10 }]}>Health Connect only holds steps that another app records, such as Google Fit or Mi Fitness. If it shows 0, open that app once and allow it to share steps.</Text>
+          <Text style={[type.small, { marginTop: 10 }]}>CrownWatch reads only the measurements listed above. The data comes from Health Connect and the apps or devices that share data with it.</Text>
+
+          <Text style={[styles.label, { marginTop: 22 }]}>Daily step goal</Text>
+          <Segment options={[[3000, '3,000'], [5000, '5,000'], [8000, '8,000'], [10000, '10,000']]} value={stepGoal} onChange={(v) => onChange({ stepGoal: v })} />
 
           <SectionHeader title="Xiaomi and Redmi phones" />
           <Card>
@@ -150,14 +164,10 @@ export default function SettingsScreen({ paired, notif, testMsg, settings, passe
             />
           </Card>
 
-          <SectionHeader title="House rules" />
+          <SectionHeader title="Developer testing" />
           <Card>
-            <Text style={[type.small, { color: colors.text, lineHeight: 20 }]}>
-              Tasks are locked once saved. They can be finished, never edited or deleted{UNDO_WINDOW_MINUTES > 0 ? ` (except an undo in the first ${UNDO_WINDOW_MINUTES} minutes)` : ''}.{'\n'}
-              Finished days can never be changed.{'\n'}
-              You have {MAX_PASSES} skips a week, and {passesLeft} left. Each skip needs a long sentence, different every day.{'\n'}
-              The daily code changes every day, so an old screenshot will not work.
-            </Text>
+            <Text style={[type.small, { color: colors.text, lineHeight: 20 }]}>Temporary testing control. This clears test tasks, task history, active timers and any active walk session. Your ringtone, reminder preferences and PC pairing are preserved.</Text>
+            <Btn label="Reset test data" kind="danger" small onPress={() => Alert.alert('Reset CrownWatch test data?', 'This permanently clears all tasks and task history on this phone. Your settings and PC pairing will remain.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Reset data', style: 'destructive', onPress: onResetTestData }])} style={{ marginTop: 12 }} />
           </Card>
 
           <SectionHeader title="Troubleshooting" />
@@ -172,7 +182,7 @@ export default function SettingsScreen({ paired, notif, testMsg, settings, passe
               <Text style={type.small}>No problems recorded. If the app ever closes by itself, open this screen and screenshot anything shown here.</Text>
             )}
           </Card>
-          <Text style={[type.small, { textAlign: 'center', marginTop: 24 }]}>CrownWatch 0.6</Text>
+          <Text style={[type.small, { textAlign: 'center', marginTop: 24 }]}>CrownWatch 0.7</Text>
         </ScrollView>
       </ScreenIn>
     </View>

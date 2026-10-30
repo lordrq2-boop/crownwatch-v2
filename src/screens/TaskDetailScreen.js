@@ -5,16 +5,16 @@ import { Pop, ScreenIn } from '../anim';
 import SkipModal from '../SkipModal';
 import { proofText } from '../TaskCard';
 import { colors, radius, type } from '../theme';
-import { categoryOf, PROOFS, fmtSteps } from '../categories';
-import { ProgressRing } from '../ui';
+import { categoryOf, PROOFS } from '../categories';
 import { fmtDayHeading, fmtDays, fmtTime, fmtCountdown, dateKey, addDays, parseKey } from '../dates';
 import { dayItems } from '../stats';
 import { taskActiveOn, undoMsLeft } from '../planner';
 
-export default function TaskDetailScreen({ task, state, now, steps, passesLeft, onBack, onStart, onSkip, onUndo }) {
+export default function TaskDetailScreen({ task, state, now, passesLeft, onBack, onStart, onSkip, onUndo }) {
   const insets = useInsets();
   const [skipOpen, setSkipOpen] = useState(false);
   const cat = categoryOf(task.category);
+  const proof = PROOFS[task.proof] || PROOFS.timer;
   const today = dateKey(now);
   const undoMs = undoMsLeft(task, state, now);
 
@@ -43,27 +43,16 @@ export default function TaskDetailScreen({ task, state, now, steps, passesLeft, 
           <Card style={{ marginTop: 22 }}>
             <Row icon="time-outline" label="Finish by" value={fmtTime(task.time)} />
             <Row icon="calendar-outline" label="Days" value={fmtDays(task.days)} />
-            <Row icon={PROOFS[task.proof].icon} label="Proof" value={proofText(task)} last />
+            <Row icon={proof.icon} label="Proof" value={proofText(task)} last />
           </Card>
 
-          {task.proof === 'steps' && canAct ? (
-            <Card style={{ marginTop: 16, flexDirection: 'row', alignItems: 'center' }}>
-              <ProgressRing size={84} stroke={9} progress={Math.min(1, (steps || 0) / (task.steps || 1))}>
-                <Icon name="footsteps-outline" size={26} color={colors.gold} />
-              </ProgressRing>
-              <View style={{ marginLeft: 16, flex: 1 }}>
-                <Text style={type.big}>{steps === null || steps === undefined ? '-' : fmtSteps(steps)}</Text>
-                <Text style={type.small}>of {fmtSteps(task.steps)} steps today</Text>
-              </View>
-            </Card>
-          ) : null}
 
           <View style={styles.lock}>
             <Icon name="lock-closed-outline" size={18} color={colors.gold} />
             <Text style={[type.small, { flex: 1, marginLeft: 10, color: colors.text }]}>This task is locked. It can be finished, but never edited or deleted. To change anything, add a new task.</Text>
           </View>
 
-          {canAct ? <Btn label={task.proof === 'timer' ? 'Start now' : task.proof === 'steps' ? 'Check my steps' : 'Finish now'} icon={PROOFS[task.proof].icon} onPress={() => onStart(todayItem)} style={{ marginTop: 16 }} /> : null}
+          {canAct ? <Btn label={task.proof === 'timer' ? 'Start now' : 'Finish now'} icon={proof.icon} onPress={() => onStart(todayItem)} style={{ marginTop: 16 }} /> : null}
           {canAct ? (
             <Btn
               label={passesLeft > 0 ? `Skip today (${passesLeft} left this week)` : 'No skips left this week'}

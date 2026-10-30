@@ -3,7 +3,7 @@ import { View, Text, TextInput, ScrollView, Pressable, StyleSheet, Alert } from 
 import { Btn, Card, Icon, IconBadge, useInsets } from '../ui';
 import { ScreenIn, select } from '../anim';
 import Wheel from '../Wheel';
-import { CATEGORIES, PROOFS, STEP_CHOICES, TIMER_CHOICES, categoryOf, fmtSteps } from '../categories';
+import { CATEGORIES, PROOFS, TIMER_CHOICES, categoryOf } from '../categories';
 import { colors, radius, type } from '../theme';
 import { DAY_NAMES, pad, fmtTime } from '../dates';
 import { UNDO_WINDOW_MINUTES } from '../planner';
@@ -14,7 +14,7 @@ const HALVES = ['am', 'pm'];
 
 // The name box comes first, right under the activity chips, so the keyboard never covers it.
 // The screen is not redrawn by anything outside it while it is open (no clock ticking), so typing stays smooth.
-function TaskFormScreen({ initialWeek = 'this', paired, health, onSave, onBack, onPair, onConnectHealth }) {
+function TaskFormScreen({ initialWeek = 'this', paired, onSave, onBack, onPair }) {
   const insets = useInsets();
   const [category, setCategory] = useState('work');
   const [title, setTitle] = useState('');
@@ -24,7 +24,6 @@ function TaskFormScreen({ initialWeek = 'this', paired, health, onSave, onBack, 
   const [days, setDays] = useState([0, 1, 2, 3, 4, 5, 6]);
   const [proof, setProof] = useState('qr');
   const [minutes, setMinutes] = useState(45);
-  const [stepGoal, setStepGoal] = useState(5000);
   const [week, setWeek] = useState(initialWeek);
   const inputRef = useRef(null);
 
@@ -39,14 +38,13 @@ function TaskFormScreen({ initialWeek = 'this', paired, health, onSave, onBack, 
     setCategory(c.id);
     setProof(c.proof);
     setMinutes(c.minutes);
-    if (c.steps) setStepGoal(c.steps);
   };
 
   const save = () => {
     const name = title.trim();
     if (!name) return Alert.alert('Name your task', `What is this ${cat.label.toLowerCase()} task? Tap a suggestion or type your own.`);
     if (days.length === 0) return Alert.alert('Pick at least one day', 'Choose the days this should remind you.');
-    onSave({ category, title: name, time, days: [...days].sort(), proof, minutes: proof === 'timer' ? minutes : 0, steps: proof === 'steps' ? stepGoal : 0 }, week);
+    onSave({ category, title: name, time, days: [...days].sort(), proof, minutes: proof === 'timer' ? minutes : 0 }, week);
   };
 
   return (
@@ -164,24 +162,6 @@ function TaskFormScreen({ initialWeek = 'this', paired, health, onSave, onBack, 
             </Card>
           ) : null}
 
-          {proof === 'steps' ? (
-            <Card style={{ marginTop: 6 }}>
-              <Text style={type.title}>Step goal</Text>
-              <Text style={[type.small, { marginTop: 2 }]}>Done when your steps today reach the goal. The app reads them from Health Connect.</Text>
-              <View style={styles.chips}>
-                {STEP_CHOICES.map((n) => (
-                  <Pressable key={n} onPress={() => { select(); setStepGoal(n); }} style={[styles.chip, stepGoal === n && styles.chipOn]}>
-                    <Text style={[styles.chipText, stepGoal === n && { color: colors.ink }]}>{fmtSteps(n)}</Text>
-                  </Pressable>
-                ))}
-              </View>
-              {health && health.state !== 'ready' ? (
-                <Btn label="Connect Health Connect" icon="link-outline" kind="secondary" small onPress={onConnectHealth} style={{ marginTop: 6 }} />
-              ) : (
-                <Text style={[type.small, { marginTop: 4 }]}>Health Connect is connected.</Text>
-              )}
-            </Card>
-          ) : null}
 
           <Text style={[type.small, { textAlign: 'center', marginTop: 24, marginBottom: 12 }]}>
             Once saved, this task is locked.{UNDO_WINDOW_MINUTES > 0 ? ` You can undo it for ${UNDO_WINDOW_MINUTES} minutes.` : ''}

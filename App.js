@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Alert, View, StatusBar } from 'react-native';
+import { AppState, Alert, BackHandler, View, StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts, PixelifySans_500Medium, PixelifySans_700Bold } from '@expo-google-fonts/pixelify-sans';
 import TodayScreen from './src/screens/TodayScreen';
@@ -11,15 +11,15 @@ import TaskDetailScreen from './src/screens/TaskDetailScreen';
 import TaskFormScreen from './src/screens/TaskFormScreen';
 import CarryOverScreen from './src/screens/CarryOverScreen';
 import TimerScreen from './src/screens/TimerScreen';
+import WalkScreen from './src/screens/WalkScreen';
 import ProofScreen from './src/screens/ProofScreen';
 import PairScreen from './src/screens/PairScreen';
 import TabBar from './src/TabBar';
 import Celebration from './src/Celebration';
-import { AnimContext, FadeUp } from './src/anim';
+import { AnimContext } from './src/anim';
 import { loadState, saveState } from './src/storage';
 import { applySchedule, clearShown, openRingtonePicker, sendTest, setupNotifications, useLastNotificationResponse } from './src/notify';
-import { connectHealth, healthMessage, healthStatus, openHealthApp, stepsToday } from './src/health';
-import { fmtSteps } from './src/categories';
+import { activityToday, activityWeek, connectHealth, healthMessage, healthStatus, openHealthApp } from './src/health';
 import { ErrorBoundary, installErrorCapture } from './src/errors';
 import { addDays, atTime, dateKey, parseKey } from './src/dates';
 import { MAX_PASSES, currentWeekStart, doneKey, nextWeekStart, previousWeekTasks, tasksOfWeek, todaysItems, undoMsLeft, weekEndKey } from './src/planner';
@@ -29,13 +29,7 @@ import { colors } from './src/theme';
 installErrorCapture();
 
 export default function App() {
-  return (
-    <ErrorBoundary>
-      <SafeAreaProvider>
-        <Root />
-      </SafeAreaProvider>
-    </ErrorBoundary>
-  );
+  return <ErrorBoundary><SafeAreaProvider><Root /></SafeAreaProvider></ErrorBoundary>;
 }
 
 function Root() {
@@ -47,52 +41,58 @@ function Root() {
   const [notif, setNotif] = useState({ ok: true, reason: '', exact: true });
   const [testMsg, setTestMsg] = useState('');
   const [celebrate, setCelebrate] = useState(0);
-  const [health, setHealth] = useState({ state: 'unknown' });
-  const [steps, setSteps] = useState(null);
-  const stateRef = useRef(null);
-  const finishRef = useRef(null);
+  const [health, setHealth] = useState({ state: 'unknown', permissions: {} });
+  const [activity, setActivity] = useState({ steps: null, activeCalories: null, distanceMeters: null, weightKg: null });
+  const [healthWeek, setHealthWeek] = useState({ steps: null, activeCalories: null });
   const loaded = useRef(false);
+  const healthBusy = useRef(false);
   const handledResponse = useRef(null);
   const response = useLastNotificationResponse();
 
   const checkNotifications = useCallback(async () => setNotif(await setupNotifications()), []);
 
-  // Reads today's steps and finishes any step task whose goal is reached.
-  const refreshSteps = useCallback(async () => {
-    const st = stateRef.current;
-    if (!st) return;
-    const pending = todaysItems(st, new Date()).filter((i) => i.task.proof === 'steps' && (i.status === 'upcoming' || i.status === 'overdue'));
-    if (pending.length === 0) return;
-    const h = await healthStatus();
-    setHealth(h);
-    if (h.state !== 'ready') return;
-    const n = await stepsToday();
-    setSteps(n);
-    if (n === null) return;
-    for (const item of pending) {
-      if (n >= item.task.steps && finishRef.current) finishRef.current(item, { proof: 'steps', steps: n });
+  const refreshHealth = useCallback(async () => {
+    if (healthBusy.current) return;
+    healthBusy.current = true;
+    try {
+      const h = await healthStatus();
+      setHealth(h);
+      if (h.state === 'ready') {
+        const [todayData, weekData] = await Promise.all([activityToday(new Date(), h), activityWeek(new Date(), h)]);
+        setActivity(todayData);
+        setHealthWeek(weekData);
+      } else {
+        setActivity({ steps: null, activeCalories: null, distanceMeters: null, weightKg: null });
+        setHealthWeek({ steps: null, activeCalories: null });
+      }
+    } finally {
+      healthBusy.current = false;
     }
   }, []);
 
   useEffect(() => {
     (async () => {
       await checkNotifications();
-      const s = await loadState();
+      const saved = await loadState();
       loaded.current = true;
-      stateRef.current = s;
-      setState(s);
-      setHealth(await healthStatus());
+      setState(saved);
+      await refreshHealth();
     })();
   }, []);
 
-  // As soon as the screen is ready, check step goals (so a goal reached while the app was closed is counted at once).
-  const ready = !!state;
+  // Save every state change, including pairing and Walk Session state. Alarm
+  // scheduling is kept separate so health refreshes don't rebuild notifications.
   useEffect(() => {
-    if (ready) refreshSteps();
-  }, [ready]);
+    if (!state || !loaded.current) return;
+    saveState(state);
+  }, [state]);
 
-  // The clock only ticks while you are on the main tabs. Pages like the new-task form are left alone
-  // so typing is never interrupted by a redraw.
+  useEffect(() => {
+    if (!state || !loaded.current) return;
+    applySchedule(state);
+  }, [state?.tasks, state?.done, state?.sessions, state?.settings?.nagMinutes, state?.settings?.sound, state?.settings?.ringSeconds, state?.settings?.reliable]);
+
+  // The main-screen clock is deliberately paused on forms to keep text entry smooth.
   useEffect(() => {
     if (screen) return undefined;
     setNow(new Date());
@@ -100,32 +100,68 @@ function Root() {
     return () => clearInterval(id);
   }, [screen]);
 
+  // Android Back returns through the current screen, then to Home from other tabs.
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (st) => {
-      if (st === 'active') { setNow(new Date()); checkNotifications(); clearShown(); refreshSteps(); }
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (screen) {
+        setScreen((current) => current?.returnTo || null);
+        return true;
+      }
+      if (tab !== 'today') {
+        setTab('today');
+        return true;
+      }
+      return false;
     });
     return () => sub.remove();
-  }, []);
+  }, [screen, tab]);
 
-  // While you are on the main tabs, step goals are checked every minute.
   useEffect(() => {
-    if (screen) return undefined;
-    const id = setInterval(() => refreshSteps(), 60000);
+    const sub = AppState.addEventListener('change', (appState) => {
+      if (appState === 'active') {
+        setNow(new Date());
+        checkNotifications();
+        clearShown();
+        refreshHealth();
+      }
+    });
+    return () => sub.remove();
+  }, [checkNotifications, refreshHealth]);
+
+  // Refresh Health Connect while the app is foregrounded. Health Connect's
+  // upstream sources may themselves publish with a delay; this is a poll, not a guarantee.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (AppState.currentState === 'active') refreshHealth();
+    }, 10 * 60 * 1000);
     return () => clearInterval(id);
-  }, [screen]);
+  }, [refreshHealth]);
 
-  // Save, and re-queue the reminders whenever the plan, completions, timers or settings change.
+  // A Walk Session expires after 30 minutes even if CrownWatch was backgrounded.
   useEffect(() => {
-    if (!state || !loaded.current) return;
-    stateRef.current = state;
-    saveState(state);
-    applySchedule(state);
-  }, [state?.tasks, state?.done, state?.sessions, state?.settings]);
+    if (!state?.walkSession?.expiresAt) return undefined;
+    const checkExpiry = () => {
+      if (Date.now() >= state.walkSession.expiresAt) {
+        setState((current) => current ? { ...current, walkSession: null } : current);
+        setScreen((current) => current?.name === 'walk' ? null : current);
+        Alert.alert('Walk session ended', 'Your 30-minute Walk Session has ended. Your daily activity totals remain in Health Connect.');
+      }
+    };
+    checkExpiry();
+    const id = setInterval(checkExpiry, 1000);
+    return () => clearInterval(id);
+  }, [state?.walkSession?.expiresAt]);
 
-  const update = useCallback((fn) => setState((s) => fn(s)), []);
-  const close = useCallback(() => setScreen(null), []);
+  // Opening Insights triggers a fresh read, in addition to the regular refresh.
+  useEffect(() => { if (tab === 'insights') refreshHealth(); }, [tab, refreshHealth]);
 
-  // Tapping a reminder opens that task (straight to scanning or the photo for those proofs).
+  useEffect(() => {
+    if (screen?.name !== 'timer' || !state) return;
+    const key = doneKey(screen.dateKey, screen.taskId);
+    if (!state.sessions?.[key]) setScreen(null);
+  }, [screen, state?.sessions]);
+
+  // A notification opens the matching task, as before.
   useEffect(() => {
     if (!state || !response) return;
     try {
@@ -152,7 +188,12 @@ function Root() {
   const settings = state.settings;
   const animations = settings.animations !== false;
   const items = todaysItems(state, now);
-  const sessionItem = items.find((i) => i.session && i.status !== 'done' && i.status !== 'skipped');
+  const activeSessionKey = Object.keys(state.sessions || {})[0];
+  const activeSessionSplit = activeSessionKey ? activeSessionKey.indexOf('|') : -1;
+  const activeSessionDate = activeSessionSplit >= 0 ? activeSessionKey.slice(0, activeSessionSplit) : null;
+  const activeSessionTaskId = activeSessionSplit >= 0 ? activeSessionKey.slice(activeSessionSplit + 1) : null;
+  const activeSessionTask = activeSessionTaskId ? state.tasks.find((task) => task.id === activeSessionTaskId) : null;
+  const activeTimerItem = activeSessionTask ? { task: activeSessionTask, dateKey: activeSessionDate, session: state.sessions[activeSessionKey] } : null;
   const cw = currentWeekStart(now);
   const nw = nextWeekStart(now);
   const thisWeek = tasksOfWeek(state, cw);
@@ -161,11 +202,13 @@ function Root() {
   const passesLeft = Math.max(0, MAX_PASSES - passesUsed);
   const paired = !!state.pairSecret;
 
-  // ---------- actions ----------
+  const update = (fn) => setState((s) => fn(s));
+  const close = () => setScreen(null);
+
   const finish = (item, extra) => {
     update((s) => {
       const k = doneKey(item.dateKey, item.task.id);
-      if (s.done[k]) return s; // already finished (for example by a step check a moment ago)
+      if (s.done[k]) return s;
       const sessions = { ...(s.sessions || {}) };
       delete sessions[k];
       return { ...s, sessions, done: { ...s.done, [k]: { status: 'done', at: new Date().toISOString(), ...extra } } };
@@ -175,24 +218,36 @@ function Root() {
     close();
   };
 
-  finishRef.current = finish;
-
   const skip = (item) => {
     update((s) => {
       const used = s.passes.week === cw ? s.passes.used : 0;
-      return {
-        ...s,
-        passes: { week: cw, used: used + 1 },
-        done: { ...s.done, [doneKey(item.dateKey, item.task.id)]: { status: 'skipped', at: new Date().toISOString() } },
-      };
+      return { ...s, passes: { week: cw, used: used + 1 }, done: { ...s.done, [doneKey(item.dateKey, item.task.id)]: { status: 'skipped', at: new Date().toISOString() } } };
     });
     clearShown();
     close();
   };
 
   const startSession = (item) => {
-    update((s) => ({ ...s, sessions: { ...(s.sessions || {}), [doneKey(item.dateKey, item.task.id)]: { startedAt: Date.now(), minutes: item.task.minutes } } }));
-    close();
+    const key = doneKey(item.dateKey, item.task.id);
+    const existingKey = Object.keys(state.sessions || {})[0];
+    if (existingKey === key) {
+      setScreen({ name: 'timer', taskId: item.task.id, dateKey: item.dateKey, returnTo: screen?.name === 'task' ? screen : null });
+      return;
+    }
+    if (existingKey && existingKey !== key) {
+      const split = existingKey.indexOf('|');
+      const existingDate = existingKey.slice(0, split);
+      const existingTaskId = existingKey.slice(split + 1);
+      const existingTask = state.tasks.find((task) => task.id === existingTaskId);
+      if (existingTask) {
+        Alert.alert('Timer already running', `"${existingTask.title}" already has an active timer. Resume or cancel it before starting another.`);
+        setScreen({ name: 'timer', taskId: existingTaskId, dateKey: existingDate });
+        return;
+      }
+    }
+    const session = { startedAt: Date.now(), minutes: item.task.minutes };
+    update((s) => ({ ...s, sessions: { ...(s.sessions || {}), [key]: session } }));
+    setScreen({ name: 'timer', taskId: item.task.id, dateKey: item.dateKey, returnTo: screen?.name === 'task' ? screen : null });
   };
 
   const cancelSession = (item) => {
@@ -201,28 +256,14 @@ function Root() {
       delete sessions[doneKey(item.dateKey, item.task.id)];
       return { ...s, sessions };
     });
-  };
-
-  // Checks the step count right now. Reaching the goal finishes the task.
-  const checkSteps = async (item) => {
-    let h = await healthStatus();
-    if (h.state === 'needsPermission') h = await connectHealth();
-    setHealth(h);
-    if (h.state !== 'ready') { Alert.alert('Health Connect', healthMessage(h)); return; }
-    const n = await stepsToday();
-    setSteps(n);
-    if (n === null) { Alert.alert('Health Connect', 'Could not read your steps just now. Try again in a moment.'); return; }
-    if (n >= item.task.steps) finish(item, { proof: 'steps', steps: n });
-    else Alert.alert('Not there yet', `${fmtSteps(n)} of ${fmtSteps(item.task.steps)} steps so far. Keep going.`);
+    close();
   };
 
   const prove = (item) => {
     if (item.task.proof === 'timer') return startSession(item);
-    if (item.task.proof === 'steps') return checkSteps(item);
-    return setScreen({ name: 'proof', item });
+    return setScreen({ name: 'proof', item, returnTo: { name: 'task', taskId: item.task.id } });
   };
 
-  // First day a new task can remind: today if its time is still ahead, otherwise tomorrow.
   const firstDayFor = (time) => {
     const t = new Date();
     return dateKey(addDays(parseKey(dateKey(t)), atTime(dateKey(t), time) > t ? 0 : 1));
@@ -248,13 +289,7 @@ function Root() {
 
   const carryOver = (chosen, target) => {
     const weekStart = target === 'next' ? nw : cw;
-    const copies = chosen.map((t, i) => ({
-      ...t,
-      id: `t${Date.now()}_${i}`,
-      createdAt: Date.now(),
-      weekStart,
-      startDate: target === 'next' ? nw : firstDayFor(t.time),
-    })).filter((t) => t.startDate <= weekEndKey(weekStart));
+    const copies = chosen.map((t, i) => ({ ...t, id: `t${Date.now()}_${i}`, createdAt: Date.now(), weekStart, startDate: target === 'next' ? nw : firstDayFor(t.time) })).filter((t) => t.startDate <= weekEndKey(weekStart));
     update((s) => ({ ...s, tasks: [...s.tasks, ...copies] }));
     setTab(target === 'next' ? 'week' : 'today');
     close();
@@ -264,9 +299,42 @@ function Root() {
   const openTask = (task) => setScreen({ name: 'task', taskId: task.id });
   const changeSettings = (patch) => update((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
   const runTest = async () => setTestMsg(await sendTest(settings));
-  const connect = async () => { const h = await connectHealth(); setHealth(h); if (h.state === 'ready') refreshSteps(); else Alert.alert('Health Connect', healthMessage(h)); };
+  const connect = async () => {
+    const h = await connectHealth();
+    setHealth(h);
+    if (h.state === 'ready') await refreshHealth();
+    else Alert.alert('Health Connect', healthMessage(h));
+  };
 
-  // Every screen sits in this frame, so the celebration can appear over whichever one is showing.
+  const startOrResumeWalk = async () => {
+    if (state.walkSession && Date.now() < state.walkSession.expiresAt) {
+      setScreen({ name: 'walk' });
+      return;
+    }
+    let h = await healthStatus();
+    if (h.state === 'needsPermission') h = await connectHealth();
+    setHealth(h);
+    if (h.state !== 'ready') { Alert.alert('Health Connect', healthMessage(h)); return; }
+    const currentActivity = await activityToday(new Date(), h);
+    setActivity(currentActivity);
+    const startedAt = Date.now();
+    const walkSession = { startedAt, expiresAt: startedAt + 30 * 60 * 1000 };
+    update((s) => ({ ...s, walkSession }));
+    setScreen({ name: 'walk' });
+  };
+
+  const finishWalk = () => {
+    update((s) => ({ ...s, walkSession: null }));
+    close();
+    refreshHealth();
+  };
+
+  const resetTestData = () => {
+    update((s) => ({ ...s, tasks: [], done: {}, sessions: {}, walkSession: null, passes: { week: null, used: 0 } }));
+    close();
+    setTab('today');
+  };
+
   const frame = (content) => (
     <AnimContext.Provider value={animations}>
       <View style={{ flex: 1, backgroundColor: colors.ground }}>
@@ -277,106 +345,42 @@ function Root() {
     </AnimContext.Provider>
   );
 
-  // ---------- which screen ----------
-  if (screen && screen.name === 'proof') {
-    return frame(
-      <ProofScreen
-        task={screen.item.task}
-        dateKey={screen.item.dateKey}
-        secret={state.pairSecret}
-        onDone={(extra) => finish(screen.item, extra)}
-        onBack={close}
-        onPair={() => setScreen({ name: 'pair', returnTo: screen })}
-      />
-    );
+  if (screen?.name === 'proof') {
+    return frame(<ProofScreen task={screen.item.task} dateKey={screen.item.dateKey} secret={state.pairSecret} onDone={(extra) => finish(screen.item, extra)} onBack={() => setScreen(screen.returnTo || null)} onPair={() => setScreen({ name: 'pair', returnTo: screen })} />);
   }
-  if (screen && screen.name === 'pair') {
-    return frame(
-      <PairScreen
-        alreadyPaired={paired}
-        onSave={(secret) => { update((s) => ({ ...s, pairSecret: secret })); setScreen(screen.returnTo || null); }}
-        onBack={() => setScreen(screen.returnTo || null)}
-      />
-    );
+  if (screen?.name === 'pair') {
+    return frame(<PairScreen alreadyPaired={paired} onSave={(secret) => { update((s) => ({ ...s, pairSecret: secret })); setScreen(screen.returnTo || null); }} onBack={() => setScreen(screen.returnTo || null)} />);
   }
-  if (sessionItem) {
-    return frame(
-      <TimerScreen
-        key={sessionItem.task.id}
-        item={sessionItem}
-        session={sessionItem.session}
-        onFinish={() => finish(sessionItem, { proof: 'timer', minutes: sessionItem.session.minutes })}
-        onCancel={() => cancelSession(sessionItem)}
-      />
-    );
+  if (screen?.name === 'walk' && state.walkSession) {
+    return frame(<WalkScreen session={state.walkSession} onBack={close} onFinish={finishWalk} />);
   }
-  if (screen && screen.name === 'task') {
+  if (screen?.name === 'timer') {
+    const timerTask = state.tasks.find((task) => task.id === screen.taskId);
+    const timerSession = state.sessions?.[doneKey(screen.dateKey, screen.taskId)];
+    const timerItem = timerTask && timerSession ? { task: timerTask, dateKey: screen.dateKey, session: timerSession } : null;
+    if (timerItem) return frame(<TimerScreen item={timerItem} session={timerItem.session} onBack={() => setScreen(screen.returnTo || null)} onFinish={() => finish(timerItem, { proof: 'timer', minutes: timerItem.session.minutes })} onCancel={() => cancelSession(timerItem)} />);
+  }
+  if (screen?.name === 'task') {
     const task = state.tasks.find((t) => t.id === screen.taskId);
-    if (task) {
-      return frame(<TaskDetailScreen task={task} state={state} now={nowCoarse} steps={steps} passesLeft={passesLeft} onBack={close} onStart={prove} onSkip={skip} onUndo={() => undoTask(task)} />);
-    }
+    if (task) return frame(<TaskDetailScreen task={task} state={state} now={nowCoarse} passesLeft={passesLeft} onBack={close} onStart={prove} onSkip={skip} onUndo={() => undoTask(task)} />);
   }
-  if (screen && screen.name === 'form') {
-    return frame(<TaskFormScreen initialWeek={screen.week} paired={paired} health={health} onSave={saveTask} onBack={close} onPair={() => setScreen({ name: 'pair', returnTo: screen })} onConnectHealth={connect} />);
+  if (screen?.name === 'form') {
+    return frame(<TaskFormScreen initialWeek={screen.week} paired={paired} onSave={saveTask} onBack={close} onPair={() => setScreen({ name: 'pair', returnTo: screen })} />);
   }
-  if (screen && screen.name === 'carry') {
+  if (screen?.name === 'carry') {
     return frame(<CarryOverScreen tasks={carrySource(screen.target)} target={screen.target} onConfirm={(chosen) => carryOver(chosen, screen.target)} onBack={close} />);
   }
-  if (screen && screen.name === 'settings') {
-    return frame(
-      <SettingsScreen
-        paired={paired}
-        notif={notif}
-        testMsg={testMsg}
-        settings={settings}
-        passesLeft={passesLeft}
-        health={health}
-        steps={steps}
-        onBack={close}
-        onPair={() => setScreen({ name: 'pair', returnTo: screen })}
-        onRecheck={checkNotifications}
-        onTest={runTest}
-        onChange={changeSettings}
-        onPickRingtone={openRingtonePicker}
-        onConnectHealth={connect}
-        onOpenHealth={openHealthApp}
-      />
-    );
+  if (screen?.name === 'settings') {
+    return frame(<SettingsScreen paired={paired} notif={notif} testMsg={testMsg} settings={settings} health={health} stepGoal={settings.stepGoal || 3000} onBack={close} onPair={() => setScreen({ name: 'pair', returnTo: screen })} onRecheck={checkNotifications} onTest={runTest} onChange={changeSettings} onPickRingtone={openRingtonePicker} onConnectHealth={connect} onRefreshHealth={refreshHealth} onOpenHealth={openHealthApp} onResetTestData={resetTestData} />);
   }
 
   return frame(
     <View style={{ flex: 1 }}>
       <View style={{ flex: 1 }}>
-        {tab === 'today' ? (
-          <TodayScreen
-            items={items}
-            strip={strip}
-            streak={streak}
-            now={now}
-            steps={steps}
-            notif={notif}
-            needsPlan={thisWeek.length === 0}
-            onOpenTask={openTask}
-            onAction={prove}
-            onAdd={() => setScreen({ name: 'form', week: 'this' })}
-            onSettings={() => setScreen({ name: 'settings' })}
-            onPlan={() => (previousWeekTasks(state, now).length > 0 ? setScreen({ name: 'carry', target: 'this' }) : setScreen({ name: 'form', week: 'this' }))}
-          />
-        ) : null}
-        {tab === 'week' ? (
-          <WeekScreen
-            thisWeek={thisWeek}
-            nextWeek={nextWeek}
-            weekStart={cw}
-            nextStart={nw}
-            canCarry={previousWeekTasks(state, now).length > 0}
-            onOpenTask={openTask}
-            onAdd={(w) => setScreen({ name: 'form', week: w })}
-            onCarry={(t) => setScreen({ name: 'carry', target: t })}
-          />
-        ) : null}
+        {tab === 'today' ? <TodayScreen items={items} strip={strip} streak={streak} now={now} activity={activity} stepGoal={settings.stepGoal || 3000} health={health} walkSession={state.walkSession} notif={notif} needsPlan={thisWeek.length === 0} activeTimerItem={activeTimerItem} onOpenTask={openTask} onAction={prove} onAdd={() => setScreen({ name: 'form', week: 'this' })} onSettings={() => setScreen({ name: 'settings' })} onPlan={() => (previousWeekTasks(state, now).length > 0 ? setScreen({ name: 'carry', target: 'this' }) : setScreen({ name: 'form', week: 'this' }))} onConnectHealth={connect} onStartWalk={startOrResumeWalk} onResumeTimer={() => activeTimerItem && setScreen({ name: 'timer', taskId: activeTimerItem.task.id, dateKey: activeTimerItem.dateKey })} /> : null}
+        {tab === 'week' ? <WeekScreen thisWeek={thisWeek} nextWeek={nextWeek} weekStart={cw} nextStart={nw} canCarry={previousWeekTasks(state, now).length > 0} onOpenTask={openTask} onAdd={(w) => setScreen({ name: 'form', week: w })} onCarry={(t) => setScreen({ name: 'carry', target: t })} /> : null}
         {tab === 'history' ? <HistoryScreen state={state} now={nowCoarse} /> : null}
-        {tab === 'insights' ? <InsightsScreen state={state} now={nowCoarse} /> : null}
+        {tab === 'insights' ? <InsightsScreen state={state} now={nowCoarse} healthWeek={healthWeek} /> : null}
       </View>
       <TabBar tab={tab} onChange={setTab} onAdd={() => setScreen({ name: 'form', week: 'this' })} />
     </View>

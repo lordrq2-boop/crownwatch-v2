@@ -1,78 +1,80 @@
-CrownWatch 0.6
+CrownWatch 0.7
 =================================================================
 
-
-HOW TO UPDATE YOUR APP WITH THIS VERSION
+WHAT CHANGED IN 0.7
 -----------------------------------------------------------------
-You already have the project on GitHub, so this is an update, not a fresh start.
 
-1. Unzip crownwatch-v0.6.zip somewhere temporary (the Desktop is fine). You get a folder called "crownwatch".
-2. Open your existing crownwatch project folder, the one you pushed from last time.
-   In File Explorer press View, then Show, then tick "Hidden items". You must see a folder called ".git" in there.
-   NEVER delete ".git". It is what connects the folder to GitHub.
-3. Delete the OLD files so nothing stale is left behind:
-   press Ctrl+A to select everything, hold Ctrl and click ".git" to un-select it, then press Delete.
-4. Open the unzipped crownwatch folder, press Ctrl+A, Ctrl+C, go back to your project folder and press Ctrl+V.
-   Make sure the hidden items came across too: ".github", ".gitignore" and ".gitattributes".
-5. Open a terminal in the project folder (click the address bar, type cmd, press Enter) and run:
-       git add .
-       git commit -m "0.6"
-       git push
-   (A line-ending warning is harmless.)
-6. On GitHub open the Actions tab. A new "Build APK" run starts by itself (about 15 to 30 minutes).
-   When it is green, open it, scroll to Artifacts, download CrownWatch-apk, unzip it and send app-release.apk to the phone.
-7. Install it over the old app. Your tasks and history stay. In Settings the bottom line should say "CrownWatch 0.6".
-   If Android says "App not installed", uninstall the old app first (that clears your tasks) and install again.
-If the build fails, open the red run, open the red step, copy the last 60 lines and send them to me.
+Health Connect activity dashboard
+  The Home screen now shows today's steps against a 3,000-step default goal, active calories, distance, and the latest
+  weight reading available in Health Connect. The step goal can be changed in Settings. Health measurements are read
+  from Health Connect; CrownWatch does not generate or estimate missing measurements.
 
+  CrownWatch requests read access for Steps, Active Calories Burned, Distance, and Weight. Each permission can be
+  granted separately. A missing optional permission or missing source data is shown as unavailable rather than zero.
+  Weight is read from the most recent record returned from the last 30 days.
 
-WHAT CHANGED
+  The app refreshes when it opens, when it returns to the foreground, when Insights is opened, and every 10 minutes
+  while the app is active. Health Connect sources can publish data with a delay, so the 10-minute refresh is not a
+  guarantee that every upstream fitness app has already written its latest reading.
+
+Separate Walk Session
+  Start a 30-minute Walk Session from Home. It measures the increase in daily steps from the starting count and does
+  not complete or prove a productivity task. You can return Home while the session remains active. The session expires
+  automatically after 30 minutes, including after CrownWatch has been backgrounded or closed.
+
+Productivity task proof
+  Steps are no longer a task-proof option. Walk tasks now use a normal timer by default. Existing saved tasks that used
+  Tasks that used Steps proof are migrated to 30-minute timer tasks so they remain in the plan and history.
+
+Insights
+  Health this week now includes total steps and active calories from Monday through the current time. Existing task
+  streak, completion, on-time, and category insights remain.
+
+Navigation and settings
+  Android Back now returns to the previous app screen, returns to Home from other tabs, and exits only from Home.
+  Running task timers can be left and resumed without cancelling them. House Rules have been removed from Settings;
+  their enforcement remains unchanged. A temporary Reset test data control clears tasks/history and active sessions
+  while preserving preferences and PC pairing. Remove this control before a public/final release.
+
+HOW TO BUILD THE APK WITH GITHUB ACTIONS
 -----------------------------------------------------------------
-Reminders now ring out
-  Each reminder plays a sound for 10, 20 or 30 seconds, then repeats every 5 minutes until the task is done.
-  Settings, Ringing sound:
-    CrownWatch jingle ..... a soft bell tune made for this app. Pick 10, 20 or 30 seconds. It starts gently and
-                            builds, so it gets your attention without being harsh.
-    Phone ringtone ........ the phone's own tone. Press "Choose your phone ringtone": Android's sound list opens, pick
-                            any ringtone or alarm tone, come back. Until you pick, it plays the default notification
-                            sound. (Android does not let an app read your alarm tone directly, so you choose it there.)
-  Reminders are marked as alarms, so they play at your phone's ALARM volume and also when the phone is on silent.
-  Turn the Alarm volume up in the phone's Sound settings if it is too quiet.
-  Opening the app, or finishing the task, stops the ringing.
-  "Send a test reminder" in Settings rings in 10 seconds so you can hear it.
 
-The check mark animation bug
-  The finish animation was sitting in the normal layout instead of floating over the screen, which pushed the bottom
-  bar up, and it never removed itself. It now floats on top, plays for about a second, and removes itself.
+1. Upload/commit the complete project folder to the main branch. Keep the .github/workflows/build-apk.yml file.
+2. GitHub automatically starts the Build APK workflow after a push to main. You can also open Actions and run it manually.
+3. Wait for the workflow to finish successfully.
+4. Open the successful run, scroll to Artifacts, and download CrownWatch-apk.
+5. Extract the artifact and install app-release.apk.
 
-Steps through Health Connect (new)
-  A task can now be proved by steps. Add a task, choose Steps, choose a goal (2,000 to 12,000). Walk now suggests a
-  5,000 step goal.
-  The app reads today's steps from Health Connect. When the goal is reached the task finishes by itself, with the
-  check mark burst. It checks when you open the app, and every minute while you are on the main tabs. You can also press
-  "Check". Cards show your progress, for example 3,420 of 8,000 steps.
-  First time: Settings, Health Connect, Connect. Android shows Health Connect's own screen, allow Steps.
-  Important: Health Connect does not count steps itself. It holds what another app records, such as Google Fit,
-  Mi Fitness or Samsung Health. If it shows 0, open that app once and allow it to share steps with Health Connect.
-  On Android 14 and newer Health Connect is built in. On Android 13 and older, install "Health Connect" from the Play Store.
-  The app now needs Android 8 or newer (your Redmi is fine).
+The GitHub workflow runs npm ci itself. Do not upload node_modules. Keep package.json and package-lock.json together.
+The workflow creates the native Android project using Expo prebuild before running Gradle.
 
-Permissions (the full list)
-  Camera, Notifications, Exact alarms (automatic), Vibrate, Run on restart, and Read steps (only used when you connect
-  Health Connect and asked for in Health Connect's own screen). Nothing else, and no internet.
-
-
-THINGS I COULD NOT TEST FOR YOU
+UPDATE SAFETY
 -----------------------------------------------------------------
-  - I cannot hear the jingle or try it on your phone. It is 10, 20 and 30 seconds long and was checked for volume level.
-    If it is too loud, too quiet or not your taste, tell me and I will change it.
-  - Xiaomi can change how the sound list and notification volume behave. If the phone ringtone picker looks odd or the
-    reminder is quiet, send me a screenshot of what you see.
-  - Health Connect has only been tested against a simulated copy. Please try: Settings, Connect, then a Steps task.
 
+The Android application ID remains com.crown.crownwatch. The app version is 0.7.0 and Android versionCode is 7.
+For an in-place Android update, the new APK must be signed with the same signing certificate as the installed APK.
+The GitHub workflow must use a persistent signing keystore for reliable updates between fresh GitHub-hosted runners.
+Do not uninstall the current app until you have confirmed that the new APK can update it, or you have backed up any
+local data you need to keep.
 
-EVERYTHING ELSE IS AS BEFORE
+PRESERVED FEATURES
 -----------------------------------------------------------------
-  - Daily code from the PC key tool (pc-key-tool/CrownWatch-Key.html), timer proof, photo proof.
-  - Tasks are locked once saved (5 minute undo), history is read only, 2 skips a week with a long daily sentence.
-  - Xiaomi checklist and troubleshooting are in Settings.
+
+  - CrownWatch jingle and phone ringtone selection.
+  - Repeated notifications, exact alarm scheduling, and reminder settings.
+  - PC key tool pairing and daily QR code verification.
+  - Photo proof, timed task proof, weekly planning, carry-over, skip rules, history, and existing insights.
+  - Offline-first operation. Health Connect data is read locally; no account or cloud sync is added.
+
+TESTING CHECKLIST
+-----------------------------------------------------------------
+
+  - Android Back from Settings, task details, task form, camera proof, pairing, timer, and Walk Session.
+  - Leave a task timer, return Home, resume it, and finish it.
+  - Connect Health Connect and grant each requested permission.
+  - Verify steps, active calories, distance, and latest weight against Health Connect.
+  - Verify the 3,000-step goal and change it in Settings.
+  - Start a Walk Session, verify its step delta, leave it running, and verify it expires after 30 minutes.
+  - Check weekly steps and active calories in Insights.
+  - Verify old task data and PC pairing remain after the 0.7 migration.
+  - Re-test jingle, phone ringtone, reminder intervals, exact timing, and notifications.

@@ -1,27 +1,27 @@
 // Crown look: charcoal ground, gold as the main colour, pink only as a highlight.
 export const colors = {
-  ground: '#0E0E12',
-  panel: '#17171D',
-  panelHi: '#21212A',
-  line: '#2A2A34',
-  text: '#F4F1E8',
-  muted: '#9C9AA6',
-  faint: '#5E5C69',
-  gold: '#F4B731',
-  goldDeep: '#C48F0E',
-  goldSoft: 'rgba(244,183,49,0.14)',
-  goldLine: 'rgba(244,183,49,0.35)',
-  pink: '#FF5CA8',
-  pinkSoft: 'rgba(255,92,168,0.14)',
-  ink: '#141418',
+  ground: '#0B0D10',
+  panel: '#14171C',
+  panelHi: '#1C2128',
+  line: '#282E36',
+  text: '#F4F3EF',
+  muted: '#A0A7B1',
+  faint: '#68717D',
+  gold: '#E5B45B',
+  goldDeep: '#A9792C',
+  goldSoft: 'rgba(229,180,91,0.13)',
+  goldLine: 'rgba(229,180,91,0.30)',
+  pink: '#EF718D',
+  pinkSoft: 'rgba(239,113,141,0.13)',
+  ink: '#111318',
 };
 
 export const fonts = { pixel: 'PixelifySans_700Bold', pixelMed: 'PixelifySans_500Medium' };
 
-export const radius = { sm: 10, md: 14, lg: 20, xl: 28, pill: 999 };
+export const radius = { sm: 10, md: 15, lg: 21, xl: 26, pill: 999 };
 
 export const type = {
-  display: { fontFamily: fonts.pixel, fontSize: 32, color: colors.text, letterSpacing: 0.3 },
+  display: { fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.7 },
   title: { fontSize: 17, fontWeight: '700', color: colors.text },
   heading: { fontSize: 20, fontWeight: '800', color: colors.text },
   body: { fontSize: 15, color: colors.text },

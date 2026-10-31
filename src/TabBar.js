@@ -5,12 +5,11 @@ import { Tap, select, tick, useAnimOn } from './anim';
 import { colors } from './theme';
 
 const LEFT_SLOTS = [
-  { id: 'today', label: 'Today', icon: 'today-outline', iconOn: 'today' },
+  { id: 'today', label: 'Home', icon: 'home-outline', iconOn: 'home' },
   { id: 'week', label: 'Plan', icon: 'list-outline', iconOn: 'list' },
 ];
 const RIGHT_SLOTS = [
   { id: 'focus', label: 'Focus', icon: 'timer-outline', iconOn: 'timer' },
-  { id: 'history', label: 'History', icon: 'time-outline', iconOn: 'time' },
   { id: 'insights', label: 'Insights', icon: 'stats-chart-outline', iconOn: 'stats-chart' },
 ];
 
@@ -26,7 +25,7 @@ function TabItem({ slot, active, onPress }) {
     }
   }, [active]);
   return (
-    <Pressable onPress={onPress} style={styles.tab}>
+    <Pressable onPress={onPress} style={styles.tab} accessibilityRole="button" accessibilityLabel={slot.label} accessibilityState={{ selected: active }}>
       <Animated.View style={{ transform: [{ scale: s }] }}>
         <Icon name={active ? slot.iconOn : slot.icon} size={24} color={active ? colors.gold : colors.faint} />
       </Animated.View>
@@ -47,7 +46,7 @@ function Fab({ onPress }) {
   return (
     <View style={styles.fabWrap}>
       <Animated.View pointerEvents="none" style={[styles.fabRing, { opacity: v.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] }), transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.7] }) }] }]} />
-      <Tap onPress={onPress} haptic scale={0.88} style={styles.fab} accessibilityLabel="Add a task">
+      <Tap onPress={onPress} haptic scale={0.92} style={styles.fab} accessibilityLabel="Add a task" accessibilityRole="button">
         <Icon name="add" size={32} color={colors.ink} />
       </Tap>
     </View>
@@ -61,13 +60,12 @@ export default function TabBar({ tab, onChange, onAdd }) {
   const x = useRef(new Animated.Value(0)).current;
   const leftWidth = Math.max(0, (width - 64) / 2);
   const leftTabWidth = leftWidth / 2;
-  const rightTabWidth = leftWidth / 3;
+  const rightTabWidth = leftWidth / 2;
   const centers = {
     today: leftTabWidth / 2,
     week: leftTabWidth * 1.5,
     focus: leftWidth + 64 + rightTabWidth / 2,
-    history: leftWidth + 64 + rightTabWidth * 1.5,
-    insights: leftWidth + 64 + rightTabWidth * 2.5,
+    insights: leftWidth + 64 + rightTabWidth * 1.5,
   };
   const target = centers[tab] == null ? 0 : centers[tab] - 14;
 
@@ -96,7 +94,7 @@ const styles = StyleSheet.create({
   indicator: { position: 'absolute', top: 0, left: 0, width: 28, height: 3, borderRadius: 2, backgroundColor: colors.gold },
   group: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   center: { width: 64, alignItems: 'center', justifyContent: 'center' },
-  tab: { flex: 1, alignItems: 'center', paddingVertical: 4 },
+  tab: { flex: 1, minHeight: 52, alignItems: 'center', justifyContent: 'center', paddingVertical: 5 },
   label: { fontSize: 11, fontWeight: '700', color: colors.faint, marginTop: 2 },
   fabWrap: { alignItems: 'center', justifyContent: 'center', height: 40 },
   fabRing: { position: 'absolute', top: -34, width: 58, height: 58, borderRadius: 29, backgroundColor: colors.gold },

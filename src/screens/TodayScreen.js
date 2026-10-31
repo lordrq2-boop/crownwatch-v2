@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Linking, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Btn, Card, Icon, IconBadge, ProgressRing, SectionHeader, useInsets } from '../ui';
 import { CountUp, FadeUp, Pop, Tap, Wiggle } from '../anim';
@@ -9,6 +9,7 @@ import { DAY_LETTERS, fmtLongDate, greeting } from '../dates';
 import { fmtSteps } from '../categories';
 import { healthMessage } from '../health';
 import { elapsedSeconds } from '../focus';
+import { weatherLabel } from '../weather';
 
 const fmtNumber = (n) => n == null ? '—' : Math.round(n).toLocaleString();
 const fmtDistance = (m) => m == null ? '—' : `${(m / 1000).toFixed(2)} km`;
@@ -24,7 +25,7 @@ function ActivityMetric({ icon, label, value, hint }) {
   );
 }
 
-export default function TodayScreen({ items, strip, streak, now, activity, stepGoal, health, walkSession, notif, needsPlan, activeTimerItem, onOpenTask, onAction, onAdd, onSettings, onPlan, onConnectHealth, onStartWalk, onResumeTimer, focus, onFocus }) {
+export default function TodayScreen({ items, strip, streak, now, activity, stepGoal, health, walkSession, notif, needsPlan, activeTimerItem, onOpenTask, onAction, onAdd, onSettings, onPlan, onConnectHealth, onStartWalk, onResumeTimer, focus, onFocus, weather, refreshing, onRefresh, homeWidgets = {} }) {
   const insets = useInsets();
   const total = items.length;
   const done = items.filter((i) => i.status === 'done').length;
@@ -36,11 +37,14 @@ export default function TodayScreen({ items, strip, streak, now, activity, stepG
   const focusGoal = focus?.settings?.dailyGoalMinutes || 120;
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={{ paddingTop: insets.top + 12, paddingHorizontal: 20, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
+    <ScrollView style={styles.root} contentContainerStyle={{ paddingTop: insets.top + 12, paddingHorizontal: 20, paddingBottom: 30 }} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={colors.gold} colors={[colors.gold]} progressBackgroundColor={colors.panel} />}>
       <FadeUp>
         <View style={styles.topRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.brand}>CrownFlow</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Image source={require('../../assets/icon.png')} style={{ width: 30, height: 30, borderRadius: 9, marginRight: 9 }} />
+              <Text style={styles.brand}>CrownFlow</Text>
+            </View>
             <Text style={type.small}>{greeting(now)}</Text>
           </View>
           {streak.current > 0 ? (
@@ -51,7 +55,31 @@ export default function TodayScreen({ items, strip, streak, now, activity, stepG
         <Text style={[type.display, { marginTop: 14 }]}>{fmtLongDate(now)}</Text>
       </FadeUp>
 
-      <FadeUp delay={90}>
+      {homeWidgets.weather !== false ? <FadeUp delay={55}>
+        <Card style={{ marginTop: 14, padding: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={{ flex: 1 }}>
+              <Text style={type.label}>WEATHER</Text>
+              <Text style={[type.title, { marginTop: 4 }]}>{weather?.city?.name || 'Set your weather city'}</Text>
+              <Text style={[type.small, { marginTop: 2 }]}>{weather?.data?.current ? weatherLabel(weather.data.current.weather_code) : (weather?.error || 'Choose a city in Settings to see local weather.')}</Text>
+              {weather?.data?.fetchedAt ? <Text style={[type.small, { marginTop: 3, fontSize: 11 }]}>Updated {new Date(weather.data.fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</Text> : null}
+              {weather?.error ? <Text style={{ color: colors.pink, fontSize: 11, marginTop: 3 }}>{weather.error}</Text> : null}
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5 }}>
+                <Pressable onPress={() => Linking.openURL('https://open-meteo.com/')} accessibilityRole="link"><Text style={{ color: colors.muted, fontSize: 10 }}>Weather data by Open-Meteo.com</Text></Pressable>
+                <Text style={{ color: colors.faint, fontSize: 10 }}> · </Text>
+                <Pressable onPress={() => Linking.openURL('https://creativecommons.org/licenses/by/4.0/')} accessibilityRole="link"><Text style={{ color: colors.muted, fontSize: 10 }}>CC BY 4.0</Text></Pressable>
+              </View>
+            </View>
+            {weather?.data?.current ? <View style={{ alignItems: 'flex-end' }}>
+              <Text style={{ color: colors.text, fontSize: 30, fontWeight: '800' }}>{Math.round(weather.data.current.temperature_2m)}°</Text>
+              <Text style={type.small}>Feels {Math.round(weather.data.current.apparent_temperature)}°</Text>
+              <Text style={type.small}>H {Math.round(weather.data.daily?.temperature_2m_max?.[0] ?? 0)}° · L {Math.round(weather.data.daily?.temperature_2m_min?.[0] ?? 0)}°</Text>
+            </View> : <Icon name="cloud-outline" size={28} color={colors.gold} />}
+          </View>
+        </Card>
+      </FadeUp> : null}
+
+      {homeWidgets.activity !== false ? <FadeUp delay={90}>
         <LinearGradient colors={['#2A2210', '#17171D']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.activityCard}>
           <View style={styles.activityTop}>
             <View style={{ flex: 1 }}>
@@ -77,9 +105,9 @@ export default function TodayScreen({ items, strip, streak, now, activity, stepG
           </View>
           {health?.state !== 'ready' ? <Btn label="Connect Health Connect" icon="link-outline" kind="secondary" small onPress={onConnectHealth} style={{ marginTop: 14 }} /> : null}
         </LinearGradient>
-      </FadeUp>
+      </FadeUp> : null}
 
-      <FadeUp delay={130}>
+      {homeWidgets.focus !== false ? <FadeUp delay={130}>
         <Card style={{ marginTop: 14, borderColor: colors.goldLine }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <View style={{ flex: 1 }}>
@@ -90,12 +118,12 @@ export default function TodayScreen({ items, strip, streak, now, activity, stepG
             <Btn label={focus?.active ? 'Resume Focus' : 'Start Focus'} small onPress={onFocus} />
           </View>
         </Card>
-      </FadeUp>
+      </FadeUp> : null}
 
-      <FadeUp delay={150}>
+      {homeWidgets.walk !== false ? <FadeUp delay={150}>
         <Btn label={walkSession ? 'Resume walk session' : 'Start a 30-minute walk'} icon="walk-outline" kind={walkSession ? 'secondary' : 'primary'} onPress={onStartWalk} style={{ marginTop: 14 }} />
         {walkSession ? <Text style={[type.small, { marginTop: 6, textAlign: 'center' }]}>A walk session is active. It ends automatically after 30 minutes.</Text> : null}
-      </FadeUp>
+      </FadeUp> : null}
 
       {activeTimerItem ? (
         <FadeUp delay={175}>
@@ -112,7 +140,7 @@ export default function TodayScreen({ items, strip, streak, now, activity, stepG
         </FadeUp>
       ) : null}
 
-      <FadeUp delay={190}>
+      {homeWidgets.streak !== false ? <FadeUp delay={190}>
         <View style={styles.strip}>
           {strip.map((d) => {
             const s = d.score;
@@ -128,7 +156,7 @@ export default function TodayScreen({ items, strip, streak, now, activity, stepG
             );
           })}
         </View>
-      </FadeUp>
+      </FadeUp> : null}
 
       {!notif.ok ? (
         <FadeUp delay={220}>

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, View, Text, ScrollView, StyleSheet } from 'react-native';
-import { Card, Icon, IconBadge, SectionHeader, useInsets } from '../ui';
+import { Btn, Card, Icon, IconBadge, SectionHeader, useInsets } from '../ui';
 import { CountUp, FadeUp, useAnimOn } from '../anim';
 import { colors, radius, type } from '../theme';
 import { categoryOf } from '../categories';
@@ -73,7 +73,7 @@ function Heat({ days }) {
   );
 }
 
-export default function InsightsScreen({ state, now, healthWeek }) {
+export default function InsightsScreen({ state, now, healthWeek, onOpenHistory }) {
   const insets = useInsets();
   const st = streaks(state, now);
   const ws = weekSummary(state, now);
@@ -95,6 +95,17 @@ export default function InsightsScreen({ state, now, healthWeek }) {
       <FadeUp>
         <Text style={type.display}>Insights</Text>
         <Text style={[type.small, { marginTop: 4 }]}>How consistent you have been.</Text>
+      </FadeUp>
+      <FadeUp delay={25}>
+        <Card style={{ marginTop: 14, padding: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
+              <Text style={type.title}>Detailed History</Text>
+              <Text style={[type.small, { marginTop: 3 }]}>Browse completed, skipped and missed tasks, plus past Focus sessions.</Text>
+            </View>
+            <Btn label="Open" icon="chevron-forward" small onPress={onOpenHistory} />
+          </View>
+        </Card>
       </FadeUp>
 
       <FadeUp delay={50}>

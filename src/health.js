@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 
 // Health Connect is Android-only. Keep all calls guarded so missing services or
-// individual permissions never prevent the rest of CrownWatch from opening.
+// individual permissions never prevent the rest of CrownFlow from opening.
 let HC = null;
 try { HC = require('react-native-health-connect'); } catch (e) { HC = null; }
 
@@ -142,6 +142,23 @@ export async function activityWeek(now = new Date(), status = null) {
   };
 }
 
+export async function activityBetween(start, end, status = null) {
+  const h = status || await healthStatus();
+  if (h.state !== 'ready') return { steps: null, activeCalories: null };
+  const from = start instanceof Date ? start : new Date(start);
+  const to = end instanceof Date ? end : new Date(end);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from >= to) return { steps: null, activeCalories: null };
+  const range = { operator: 'between', startTime: from.toISOString(), endTime: to.toISOString() };
+  const [stepsResult, caloriesResult] = await Promise.all([
+    h.permissions?.steps ? aggregate('Steps', range) : Promise.resolve(null),
+    h.permissions?.calories ? aggregate('ActiveCaloriesBurned', range) : Promise.resolve(null),
+  ]);
+  return {
+    steps: typeof stepsResult?.COUNT_TOTAL === 'number' ? Math.max(0, Math.round(stepsResult.COUNT_TOTAL)) : null,
+    activeCalories: energyKcal(caloriesResult),
+  };
+}
+
 export function openHealthApp() {
   try { if (HC) HC.openHealthConnectSettings(); } catch (e) {}
 }
@@ -150,7 +167,7 @@ export function healthMessage(h) {
   switch (h.state) {
     case 'missing': return 'Health Connect is not installed. Install Health Connect from the Play Store, then try again.';
     case 'update': return 'Health Connect needs an update. Open the Play Store, update it, then try again.';
-    case 'needsPermission': return 'CrownWatch needs permission to read your steps. Tap Connect and allow access in Health Connect.';
+    case 'needsPermission': return 'CrownFlow needs permission to read your steps. Tap Connect and allow access in Health Connect.';
     case 'unsupported': return 'Health Connect is not available in this build.';
     case 'error': return `Could not reach Health Connect: ${h.message || 'unknown problem'}`;
     default: return '';

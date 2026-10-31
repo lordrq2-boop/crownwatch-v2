@@ -1,12 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { dateKey, mondayOf } from './dates';
+import { migrateFocus } from './focus';
 
 const KEY = 'taskalarm.v1';
 
 export const DEFAULT_SETTINGS = { animations: true, sound: 'jingle', ringSeconds: 20, nagMinutes: 5, reliable: false, stepGoal: 3000 };
 
 export const emptyState = () => ({
-  version: 4,
+  version: 5,
+  focus: migrateFocus(null),
   // Tasks are never edited or removed once saved (apart from a short undo window), so history stays honest.
   // { id, category, title, time: 'HH:MM', days: [0-6], proof: 'qr'|'photo'|'timer', minutes,
   //   weekStart: 'YYYY-MM-DD' (the Monday of its week), startDate, createdAt }
@@ -22,7 +24,7 @@ export const emptyState = () => ({
 // Brings data saved by older versions up to date.
 export function migrate(s) {
   const base = emptyState();
-  const out = { ...base, ...s, version: 4 };
+  const out = { ...base, ...s, version: 5, focus: migrateFocus(s.focus) };
   const oldWeek = s.weekStart || dateKey(mondayOf(new Date()));
   out.tasks = (s.tasks || []).map((t) => {
     const { kind, key, strict, hint, steps, ...rest } = t;

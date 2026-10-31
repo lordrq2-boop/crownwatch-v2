@@ -4,10 +4,12 @@ import { Icon, useInsets } from './ui';
 import { Tap, select, tick, useAnimOn } from './anim';
 import { colors } from './theme';
 
-const SLOTS = [
+const LEFT_SLOTS = [
   { id: 'today', label: 'Today', icon: 'today-outline', iconOn: 'today' },
   { id: 'week', label: 'Plan', icon: 'list-outline', iconOn: 'list' },
-  { id: 'add' },
+];
+const RIGHT_SLOTS = [
+  { id: 'focus', label: 'Focus', icon: 'timer-outline', iconOn: 'timer' },
   { id: 'history', label: 'History', icon: 'time-outline', iconOn: 'time' },
   { id: 'insights', label: 'Insights', icon: 'stats-chart-outline', iconOn: 'stats-chart' },
 ];
@@ -57,28 +59,34 @@ export default function TabBar({ tab, onChange, onAdd }) {
   const on = useAnimOn();
   const [width, setWidth] = useState(0);
   const x = useRef(new Animated.Value(0)).current;
-  const slotW = width / SLOTS.length;
-  const index = SLOTS.findIndex((s) => s.id === tab);
+  const leftWidth = Math.max(0, (width - 64) / 2);
+  const leftTabWidth = leftWidth / 2;
+  const rightTabWidth = leftWidth / 3;
+  const centers = {
+    today: leftTabWidth / 2,
+    week: leftTabWidth * 1.5,
+    focus: leftWidth + 64 + rightTabWidth / 2,
+    history: leftWidth + 64 + rightTabWidth * 1.5,
+    insights: leftWidth + 64 + rightTabWidth * 2.5,
+  };
+  const target = centers[tab] == null ? 0 : centers[tab] - 14;
 
   useEffect(() => {
-    if (!width || index < 0) return;
-    const target = index * slotW + slotW / 2 - 14;
+    if (!width || centers[tab] == null) return;
     if (on) Animated.spring(x, { toValue: target, friction: 8, tension: 120, useNativeDriver: true }).start();
     else x.setValue(target);
-  }, [index, width, on]);
+  }, [tab, width, on]);
 
   return (
     <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 10) }]} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
       {width > 0 ? <Animated.View style={[styles.indicator, { transform: [{ translateX: x }] }]} /> : null}
-      {SLOTS.map((slot) =>
-        slot.id === 'add' ? (
-          <View key="add" style={{ flex: 1 }}><Fab onPress={onAdd} /></View>
-        ) : (
-          <View key={slot.id} style={{ flex: 1 }}>
-            <TabItem slot={slot} active={tab === slot.id} onPress={() => { select(); onChange(slot.id); }} />
-          </View>
-        )
-      )}
+      <View style={styles.group}>
+        {LEFT_SLOTS.map((slot) => <TabItem key={slot.id} slot={slot} active={tab === slot.id} onPress={() => { select(); onChange(slot.id); }} />)}
+      </View>
+      <View style={styles.center}><Fab onPress={onAdd} /></View>
+      <View style={styles.group}>
+        {RIGHT_SLOTS.map((slot) => <TabItem key={slot.id} slot={slot} active={tab === slot.id} onPress={() => { select(); onChange(slot.id); }} />)}
+      </View>
     </View>
   );
 }
@@ -86,7 +94,9 @@ export default function TabBar({ tab, onChange, onAdd }) {
 const styles = StyleSheet.create({
   bar: { flexDirection: 'row', backgroundColor: colors.panel, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 10, alignItems: 'center' },
   indicator: { position: 'absolute', top: 0, left: 0, width: 28, height: 3, borderRadius: 2, backgroundColor: colors.gold },
-  tab: { alignItems: 'center', paddingVertical: 4 },
+  group: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  center: { width: 64, alignItems: 'center', justifyContent: 'center' },
+  tab: { flex: 1, alignItems: 'center', paddingVertical: 4 },
   label: { fontSize: 11, fontWeight: '700', color: colors.faint, marginTop: 2 },
   fabWrap: { alignItems: 'center', justifyContent: 'center', height: 40 },
   fabRing: { position: 'absolute', top: -34, width: 58, height: 58, borderRadius: 29, backgroundColor: colors.gold },

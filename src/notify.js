@@ -1,6 +1,7 @@
 import { Linking, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { planReminders } from './planner';
+import { remainingSeconds } from './focus';
 
 // Reminders that ring out. Each reminder plays a sound for 10 to 30 seconds, like an alarm tone, then repeats
 // every few minutes until the task is done. The sound lives on a notification channel, and Android keeps a
@@ -47,7 +48,7 @@ export async function setupNotifications() {
         },
       };
       for (const [secs, file] of Object.entries(JINGLES)) {
-        await Notifications.setNotificationChannelAsync(`ring_jingle_${secs}`, { ...common, name: `CrownWatch jingle (${secs} seconds)`, sound: file });
+        await Notifications.setNotificationChannelAsync(`ring_jingle_${secs}`, { ...common, name: `CrownFlow jingle (${secs} seconds)`, sound: file });
       }
       await Notifications.setNotificationChannelAsync('ring_phone', { ...common, name: 'Phone ringtone', sound: 'default' });
     }
@@ -60,7 +61,7 @@ export async function setupNotifications() {
       ok: false,
       exact,
       reason: perm.canAskAgain === false
-        ? 'Notifications are blocked for CrownWatch. Open the phone Settings, Apps, CrownWatch, Notifications, and switch them on.'
+        ? 'Notifications are blocked for CrownFlow. Open the phone Settings, Apps, CrownFlow, Notifications, and switch them on.'
         : 'Notifications are not allowed yet. Tap Check again and choose Allow.',
     };
   } catch (e) {
@@ -83,6 +84,34 @@ export async function applySchedule(state, now = new Date()) {
         trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: r.when, channelId, delivery },
       });
     }
+    const activeFocus = state.focus?.active;
+    if (activeFocus?.runningSince) {
+      const secondsLeft = remainingSeconds(activeFocus, now.getTime());
+      if (secondsLeft > 0) {
+        await Notifications.scheduleNotificationAsync({
+          identifier: `crownflow_focus_${activeFocus.id}`,
+          content: {
+            title: activeFocus.type === 'focus' ? 'Focus session complete' : 'Break complete',
+            body: activeFocus.type === 'focus' ? 'Your focus time is up. Open CrownFlow to continue.' : 'Your break is over. Open CrownFlow when you are ready for the next session.',
+            sound,
+            data: { type: 'focusComplete', sessionId: activeFocus.id },
+          },
+          trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: new Date(now.getTime() + secondsLeft * 1000), channelId, delivery },
+        });
+      }
+    }
+    const reviewSettings = state.focus?.settings || {};
+    if (reviewSettings.weeklyReviewNotification) {
+      const hour = Math.max(0, Math.min(23, Number(reviewSettings.weeklyReviewHour ?? 19)));
+      const trigger = Platform.OS === 'ios'
+        ? { type: Notifications.SchedulableTriggerInputTypes.CALENDAR, weekday: 2, hour, minute: 0, repeats: true }
+        : { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: 2, hour, minute: 0 };
+      await Notifications.scheduleNotificationAsync({
+        identifier: 'crownflow_weekly_review',
+        content: { title: 'Your weekly review', body: 'Take a moment to review last week’s tasks and focus progress.', data: { type: 'weeklyReview' } },
+        trigger,
+      });
+    }
     return reminders.length;
   } catch (e) {
     return 0;
@@ -100,7 +129,7 @@ export async function sendTest(settings) {
   try {
     const channelId = channelIdFor(settings);
     await Notifications.scheduleNotificationAsync({
-      content: { title: 'CrownWatch test', body: 'If you can hear this, reminders can ring out.', sound: soundFileFor(channelId) },
+      content: { title: 'CrownFlow test', body: 'If you can hear this, reminders can ring out.', sound: soundFileFor(channelId) },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 10, channelId },
     });
     return 'Test sent. Leave the app or lock the phone and wait 10 seconds. It rings at your Alarm volume.';

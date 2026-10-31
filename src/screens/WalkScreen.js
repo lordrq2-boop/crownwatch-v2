@@ -57,7 +57,7 @@ export default function WalkScreen({ session, onBack, onFinish }) {
         <Btn label="End walk" icon="checkmark" onPress={onFinish} />
       ) : (
         <>
-          <Text style={[type.small, { textAlign: 'center', marginBottom: 14 }]}>Health Connect provides steps recorded during this session. CrownWatch refreshes the count every 10 minutes while this screen is open. The session expires after 30 minutes.</Text>
+          <Text style={[type.small, { textAlign: 'center', marginBottom: 14 }]}>Health Connect provides steps recorded during this session. CrownFlow refreshes the count every 10 minutes while this screen is open. The session expires after 30 minutes.</Text>
           <Btn label="Finish walk now" onPress={onFinish} />
           <Btn label="Back to Home" kind="quiet" small onPress={onBack} style={{ marginTop: 10 }} />
         </>

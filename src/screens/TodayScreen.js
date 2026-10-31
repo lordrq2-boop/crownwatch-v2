@@ -8,6 +8,7 @@ import { colors, fonts, radius, type } from '../theme';
 import { DAY_LETTERS, fmtLongDate, greeting } from '../dates';
 import { fmtSteps } from '../categories';
 import { healthMessage } from '../health';
+import { elapsedSeconds } from '../focus';
 
 const fmtNumber = (n) => n == null ? '—' : Math.round(n).toLocaleString();
 const fmtDistance = (m) => m == null ? '—' : `${(m / 1000).toFixed(2)} km`;
@@ -23,7 +24,7 @@ function ActivityMetric({ icon, label, value, hint }) {
   );
 }
 
-export default function TodayScreen({ items, strip, streak, now, activity, stepGoal, health, walkSession, notif, needsPlan, activeTimerItem, onOpenTask, onAction, onAdd, onSettings, onPlan, onConnectHealth, onStartWalk, onResumeTimer }) {
+export default function TodayScreen({ items, strip, streak, now, activity, stepGoal, health, walkSession, notif, needsPlan, activeTimerItem, onOpenTask, onAction, onAdd, onSettings, onPlan, onConnectHealth, onStartWalk, onResumeTimer, focus, onFocus }) {
   const insets = useInsets();
   const total = items.length;
   const done = items.filter((i) => i.status === 'done').length;
@@ -31,13 +32,15 @@ export default function TodayScreen({ items, strip, streak, now, activity, stepG
   const pct = total === 0 ? 0 : done / total;
   const steps = activity?.steps;
   const stepProgress = steps == null ? 0 : Math.min(1, steps / Math.max(1, stepGoal));
+  const focusMinutes = Math.floor(((focus?.history || []).filter((s) => s.type === 'focus' && new Date(s.startedAt).toDateString() === now.toDateString()).reduce((n, s) => n + (s.actualFocusSeconds || 0), 0) + (focus?.active?.type === 'focus' ? elapsedSeconds(focus.active) : 0)) / 60);
+  const focusGoal = focus?.settings?.dailyGoalMinutes || 120;
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={{ paddingTop: insets.top + 12, paddingHorizontal: 20, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
       <FadeUp>
         <View style={styles.topRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.brand}>CrownWatch</Text>
+            <Text style={styles.brand}>CrownFlow</Text>
             <Text style={type.small}>{greeting(now)}</Text>
           </View>
           {streak.current > 0 ? (
@@ -74,6 +77,19 @@ export default function TodayScreen({ items, strip, streak, now, activity, stepG
           </View>
           {health?.state !== 'ready' ? <Btn label="Connect Health Connect" icon="link-outline" kind="secondary" small onPress={onConnectHealth} style={{ marginTop: 14 }} /> : null}
         </LinearGradient>
+      </FadeUp>
+
+      <FadeUp delay={130}>
+        <Card style={{ marginTop: 14, borderColor: colors.goldLine }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={{ flex: 1 }}>
+              <Text style={type.label}>FOCUS TODAY</Text>
+              <Text style={[type.title, { marginTop: 4 }]}>{focusMinutes} / {focusGoal} focus minutes</Text>
+              <Text style={[type.small, { marginTop: 3 }]}>Build momentum with a Pomodoro session.</Text>
+            </View>
+            <Btn label={focus?.active ? 'Resume Focus' : 'Start Focus'} small onPress={onFocus} />
+          </View>
+        </Card>
       </FadeUp>
 
       <FadeUp delay={150}>

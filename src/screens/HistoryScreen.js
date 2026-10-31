@@ -23,13 +23,23 @@ function outcome(it) {
   return { text: 'Missed', tone: 'pink' };
 }
 
-export default function HistoryScreen({ state, now }) {
+export default function HistoryScreen({ state, now, focus }) {
   const insets = useInsets();
   const [days, setDays] = useState(30);
+  const [view, setView] = useState('tasks');
   const list = history(state, now, days);
   return (
     <ScrollView style={styles.root} contentContainerStyle={{ paddingTop: insets.top + 12, paddingHorizontal: 20, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
       <FadeUp><Text style={type.display}>History</Text></FadeUp>
+      <View style={styles.chips}>
+        {[["tasks", "Tasks"], ["focus", "Focus"]].map(([key, label]) => (
+          <Pressable key={key} onPress={() => setView(key)} style={[styles.chip, view === key && styles.chipOn]}>
+            <Text style={[styles.chipText, view === key && { color: colors.ink }]}>{label}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {view === 'tasks' ? <>
       <View style={styles.lockRow}>
         <Icon name="lock-closed-outline" size={14} color={colors.muted} />
         <Text style={[type.small, { marginLeft: 6 }]}>Read only. Past days can never be changed.</Text>
@@ -77,6 +87,18 @@ export default function HistoryScreen({ state, now }) {
           </FadeUp>
         ))
       )}
+      </> : (focus?.history || []).slice().reverse().map((session) => (
+        <View key={session.id} style={[styles.group, { marginTop: 12, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center' }]}>
+          <IconBadge name={session.type === 'focus' ? 'timer-outline' : 'cafe-outline'} size={38} tone={session.status === 'completed' ? 'gold' : 'muted'} />
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={type.title}>{session.type === 'focus' ? 'Focus session' : session.type === 'longBreak' ? 'Long break' : 'Short break'}</Text>
+            <Text style={type.small}>{new Date(session.startedAt).toLocaleString()} · {Math.round((session.actualFocusSeconds || 0) / 60)} min · {session.interruptionCount || 0} interruptions</Text>
+            {session.taskId && state.tasks.find((t) => t.id === session.taskId) ? <Text style={[type.small, { marginTop: 2 }]}>Task: {state.tasks.find((t) => t.id === session.taskId).title}</Text> : null}
+          </View>
+          <Pill label={session.status === 'completed' ? 'Completed' : 'Ended early'} tone={session.status === 'completed' ? 'gold' : 'muted'} />
+        </View>
+      ))}
+      {view === 'focus' && !(focus?.history || []).length ? <Card style={{ marginTop: 20, alignItems: 'center', paddingVertical: 30 }}><IconBadge name="timer-outline" size={56} /><Text style={[type.title, { marginTop: 12 }]}>No focus sessions yet</Text><Text style={[type.small, { textAlign: 'center', marginTop: 5 }]}>Completed and ended Focus sessions will appear here.</Text></Card> : null}
     </ScrollView>
   );
 }

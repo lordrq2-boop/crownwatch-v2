@@ -43,7 +43,7 @@ export default function PairScreen({ alreadyPaired, onSave, onBack }) {
         <CameraView style={StyleSheet.absoluteFill} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={handle} />
         <View style={styles.top}>
           <Text style={styles.title}>Pair with your PC</Text>
-          <Text style={styles.sub}>Scan the pairing code shown by the CrownWatch key tool</Text>
+          <Text style={styles.sub}>Scan the pairing code shown by the CrownFlow key tool</Text>
         </View>
         <View style={styles.frame} />
         <View style={styles.bottom}>

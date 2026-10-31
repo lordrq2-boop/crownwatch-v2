@@ -33,7 +33,7 @@ function Segment({ options, value, onChange }) {
 
 const SWITCH = { trackColor: { true: colors.goldDeep, false: colors.panelHi } };
 
-export default function SettingsScreen({ paired, notif, testMsg, settings, health, stepGoal, onBack, onPair, onRecheck, onTest, onChange, onPickRingtone, onConnectHealth, onRefreshHealth, onOpenHealth, onResetTestData }) {
+export default function SettingsScreen({ paired, notif, testMsg, settings, health, stepGoal, onBack, onPair, onRecheck, onTest, onChange, onPickRingtone, onConnectHealth, onRefreshHealth, onOpenHealth, onResetTestData, focusSettings, onFocusChange }) {
   const insets = useInsets();
   const [lastError, setLastError] = useState(null);
   useEffect(() => { readLastError().then(setLastError); }, []);
@@ -82,7 +82,7 @@ export default function SettingsScreen({ paired, notif, testMsg, settings, healt
           {testMsg ? <Text style={[type.small, { marginTop: 10 }]}>{testMsg}</Text> : null}
 
           <Text style={[styles.label, { marginTop: 22 }]}>Ringing sound</Text>
-          <Segment options={[['jingle', 'CrownWatch jingle'], ['phone', 'Phone ringtone']]} value={settings.sound} onChange={(v) => onChange({ sound: v })} />
+          <Segment options={[['jingle', 'CrownFlow jingle'], ['phone', 'Phone ringtone']]} value={settings.sound} onChange={(v) => onChange({ sound: v })} />
           {settings.sound === 'jingle' ? (
             <>
               <Text style={[styles.label, { marginTop: 18 }]}>How long it rings</Text>
@@ -109,12 +109,39 @@ export default function SettingsScreen({ paired, notif, testMsg, settings, healt
             />
           </Card>
 
+          <SectionHeader title="Focus and Pomodoro" />
+          <Card>
+            <Text style={styles.label}>Daily focus goal</Text>
+            <Segment options={[[60, '1 hour'], [120, '2 hours'], [180, '3 hours'], [240, '4 hours']]} value={focusSettings?.dailyGoalMinutes || 120} onChange={(v) => onFocusChange({ dailyGoalMinutes: v })} />
+            <Text style={[styles.label, { marginTop: 18 }]}>Weekly focus goal</Text>
+            <Segment options={[[300, '5 hours'], [600, '10 hours'], [900, '15 hours'], [1200, '20 hours']]} value={focusSettings?.weeklyGoalMinutes || 600} onChange={(v) => onFocusChange({ weeklyGoalMinutes: v })} />
+            <Text style={[styles.label, { marginTop: 18 }]}>Focus session length</Text>
+            <Segment options={[[20, '20 min'], [25, '25 min'], [30, '30 min'], [45, '45 min']]} value={focusSettings?.focusMinutes || 25} onChange={(v) => onFocusChange({ focusMinutes: v })} />
+            <Text style={[styles.label, { marginTop: 18 }]}>Short break</Text>
+            <Segment options={[[5, '5 min'], [10, '10 min']]} value={focusSettings?.shortBreakMinutes || 5} onChange={(v) => onFocusChange({ shortBreakMinutes: v })} />
+            <Text style={[styles.label, { marginTop: 18 }]}>Long break</Text>
+            <Segment options={[[15, '15 min'], [20, '20 min'], [30, '30 min']]} value={focusSettings?.longBreakMinutes || 15} onChange={(v) => onFocusChange({ longBreakMinutes: v })} />
+            <Text style={[type.small, { marginTop: 10 }]}>A long break follows every fourth completed focus session. Break time is not counted as focus time.</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.line }}>
+              <View style={{ flex: 1, paddingRight: 12 }}><Text style={type.title}>Play ambient sound during breaks</Text><Text style={type.small}>Keep your selected background sound playing during short and long breaks.</Text></View>
+              <Switch {...SWITCH} value={focusSettings?.ambientDuringBreaks !== false} onValueChange={(v) => onFocusChange({ ambientDuringBreaks: v })} thumbColor={focusSettings?.ambientDuringBreaks !== false ? colors.gold : colors.muted} />
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.line }}>
+              <View style={{ flex: 1, paddingRight: 12 }}><Text style={type.title}>Weekly review reminder</Text><Text style={type.small}>A reminder every Monday. Off by default.</Text></View>
+              <Switch {...SWITCH} value={!!focusSettings?.weeklyReviewNotification} onValueChange={(v) => onFocusChange({ weeklyReviewNotification: v })} thumbColor={focusSettings?.weeklyReviewNotification ? colors.gold : colors.muted} />
+            </View>
+            {focusSettings?.weeklyReviewNotification ? <>
+              <Text style={[styles.label, { marginTop: 14 }]}>Reminder time</Text>
+              <Segment options={[[8, '8 AM'], [12, '12 PM'], [17, '5 PM'], [19, '7 PM'], [20, '8 PM']]} value={focusSettings?.weeklyReviewHour ?? 19} onChange={(v) => onFocusChange({ weeklyReviewHour: v })} />
+            </> : null}
+          </Card>
+
           <SectionHeader title="Health Connect" />
           <Card style={{ paddingVertical: 4 }}>
             <Row
               icon="heart-outline"
               title="Activity data"
-              sub={health.state === 'ready' ? 'Connected. CrownWatch reads the health measurements you allow.' : healthMessage(health) || 'Checking Health Connect...'}
+              sub={health.state === 'ready' ? 'Connected. CrownFlow reads the health measurements you allow.' : healthMessage(health) || 'Checking Health Connect...'}
               right={<Pill label={health.state === 'ready' ? 'Connected' : 'Not connected'} tone={health.state === 'ready' ? 'gold' : 'pink'} />}
             />
             <View style={{ paddingHorizontal: 4, paddingBottom: 12 }}>
@@ -136,7 +163,7 @@ export default function SettingsScreen({ paired, notif, testMsg, settings, healt
             <Btn label="Refresh data" kind="quiet" small onPress={onRefreshHealth} style={{ marginLeft: 8 }} />
             <Btn label="Open Health Connect" kind="quiet" small onPress={onOpenHealth} style={{ marginTop: 8 }} />
           </View>
-          <Text style={[type.small, { marginTop: 10 }]}>CrownWatch reads only the measurements listed above. The data comes from Health Connect and the apps or devices that share data with it.</Text>
+          <Text style={[type.small, { marginTop: 10 }]}>CrownFlow reads only the measurements listed above. The data comes from Health Connect and the apps or devices that share data with it.</Text>
 
           <Text style={[styles.label, { marginTop: 22 }]}>Daily step goal</Text>
           <Segment options={[[3000, '3,000'], [5000, '5,000'], [8000, '8,000'], [10000, '10,000']]} value={stepGoal} onChange={(v) => onChange({ stepGoal: v })} />
@@ -147,7 +174,7 @@ export default function SettingsScreen({ paired, notif, testMsg, settings, healt
               Xiaomi can silence apps that are not open. Do these three things once:{'\n'}
               1. Open the app settings below, tap Autostart, switch it on.{'\n'}
               2. Tap Battery saver there and choose No restrictions.{'\n'}
-              3. Open the recent apps screen, press and hold the CrownWatch card, tap the lock icon.{'\n'}
+              3. Open the recent apps screen, press and hold the CrownFlow card, tap the lock icon.{'\n'}
               The app cannot see these switches, so there is no tick here. Use "Send a test reminder" to check.
             </Text>
             <Btn label="Open app settings" icon="open-outline" kind="secondary" small onPress={() => Linking.openSettings()} style={{ marginTop: 12 }} />
@@ -167,7 +194,7 @@ export default function SettingsScreen({ paired, notif, testMsg, settings, healt
           <SectionHeader title="Developer testing" />
           <Card>
             <Text style={[type.small, { color: colors.text, lineHeight: 20 }]}>Temporary testing control. This clears test tasks, task history, active timers and any active walk session. Your ringtone, reminder preferences and PC pairing are preserved.</Text>
-            <Btn label="Reset test data" kind="danger" small onPress={() => Alert.alert('Reset CrownWatch test data?', 'This permanently clears all tasks and task history on this phone. Your settings and PC pairing will remain.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Reset data', style: 'destructive', onPress: onResetTestData }])} style={{ marginTop: 12 }} />
+            <Btn label="Reset test data" kind="danger" small onPress={() => Alert.alert('Reset CrownFlow test data?', 'This permanently clears all tasks and task history on this phone. Your settings and PC pairing will remain.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Reset data', style: 'destructive', onPress: onResetTestData }])} style={{ marginTop: 12 }} />
           </Card>
 
           <SectionHeader title="Troubleshooting" />
@@ -182,7 +209,7 @@ export default function SettingsScreen({ paired, notif, testMsg, settings, healt
               <Text style={type.small}>No problems recorded. If the app ever closes by itself, open this screen and screenshot anything shown here.</Text>
             )}
           </Card>
-          <Text style={[type.small, { textAlign: 'center', marginTop: 24 }]}>CrownWatch 0.7</Text>
+          <Text style={[type.small, { textAlign: 'center', marginTop: 24 }]}>CrownFlow 0.8</Text>
         </ScrollView>
       </ScreenIn>
     </View>

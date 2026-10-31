@@ -18,7 +18,7 @@ function QrProof({ task, dateKey, secret, onDone, onBack, onPair }) {
     return (
       <View style={styles.center}>
         <Text style={styles.title}>Pair your PC first</Text>
-        <Text style={styles.body}>Daily codes come from the CrownWatch key tool on your PC. Pair it once, then try again.</Text>
+        <Text style={styles.body}>Daily codes come from the CrownFlow key tool on your PC. Pair it once, then try again.</Text>
         <Btn label="Pair now" onPress={onPair} style={{ marginTop: 18, alignSelf: 'stretch' }} />
         <Btn label="Back" kind="quiet" onPress={onBack} style={{ marginTop: 8, alignSelf: 'stretch' }} />
       </View>
@@ -34,7 +34,7 @@ function QrProof({ task, dateKey, secret, onDone, onBack, onPair }) {
       return;
     }
     const text = {
-      notcode: 'That is not a CrownWatch code.',
+      notcode: 'That is not a CrownFlow code.',
       invalid: 'That code is not valid for your key. Open your PC key tool and show today\'s code.',
       wrongday: `That code is for ${r.day}. You need today's code.`,
     }[r.reason] || 'That code was not accepted.';

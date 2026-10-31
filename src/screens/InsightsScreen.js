@@ -4,8 +4,9 @@ import { Card, Icon, IconBadge, SectionHeader, useInsets } from '../ui';
 import { CountUp, FadeUp, useAnimOn } from '../anim';
 import { colors, radius, type } from '../theme';
 import { categoryOf } from '../categories';
-import { DAY_LETTERS, weekdayIndex } from '../dates';
+import { DAY_LETTERS, weekdayIndex, parseKey } from '../dates';
 import { categoryBreakdown, completionRate, lastDays, onTimeRate, streaks, totalDone, weekSummary } from '../stats';
+import { focusTotals, weekKey } from '../focus';
 
 function Stat({ icon, label, value, suffix = '', sub, delay }) {
   return (
@@ -82,6 +83,12 @@ export default function InsightsScreen({ state, now, healthWeek }) {
   const heat = lastDays(state, now, 35);
   const cats = categoryBreakdown(state, now, 30);
   const empty = state.tasks.length === 0;
+  const focusStart = parseKey(weekKey(now)).getTime();
+  const focusEnd = focusStart + 7 * 86400000;
+  const focusWeek = focusTotals(state.focus?.history, focusStart, focusEnd);
+  const weeklyFocusGoal = Math.max(1, state.focus?.settings?.weeklyGoalMinutes || 600);
+  const weeklyFocusProgress = Math.round(focusWeek.seconds / (weeklyFocusGoal * 60) * 100);
+  const reviews = Object.values(state.focus?.weeklyReviews || {}).sort((a, b) => b.weekStart.localeCompare(a.weekStart));
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={{ paddingTop: insets.top + 12, paddingHorizontal: 20, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
@@ -96,6 +103,33 @@ export default function InsightsScreen({ state, now, healthWeek }) {
           <Stat icon="footsteps-outline" label="TOTAL STEPS" value={healthWeek?.steps == null ? '—' : healthWeek.steps.toLocaleString()} sub="Health Connect" delay={90} />
           <Stat icon="flame-outline" label="ACTIVE CALORIES" value={healthWeek?.activeCalories == null ? '—' : Math.round(healthWeek.activeCalories)} suffix=" kcal" sub="Health Connect" delay={130} />
         </View>
+      </FadeUp>
+
+      <FadeUp delay={65}>
+        <SectionHeader title="Focus this week" right="Monday to Sunday" />
+        <View style={styles.grid}>
+          <Stat icon="timer-outline" label="FOCUS TIME" value={`${Math.floor(focusWeek.seconds / 3600)}h ${Math.floor((focusWeek.seconds % 3600) / 60)}m`} sub={`${weeklyFocusProgress}% of ${weeklyFocusGoal / 60}h weekly goal`} delay={100} />
+          <Stat icon="checkmark-circle-outline" label="SESSIONS" value={focusWeek.completed} sub={`${focusWeek.interruptions} interruptions`} delay={140} />
+        </View>
+      </FadeUp>
+
+      <FadeUp delay={90}>
+        <SectionHeader title="Weekly reviews" right="Saved automatically" />
+        {reviews.length ? reviews.slice(0, 8).map((review) => (
+          <Card key={review.weekStart} style={{ marginBottom: 10 }}>
+            <Text style={type.title}>Week of {review.weekStart}</Text>
+            <View style={styles.reviewMetrics}>
+              <View style={{ flex: 1 }}><Text style={styles.reviewValue}>{review.tasks.done}/{review.tasks.scheduled}</Text><Text style={type.small}>Tasks completed</Text></View>
+              <View style={{ flex: 1 }}><Text style={styles.reviewValue}>{Math.floor(review.focus.seconds / 3600)}h {Math.floor((review.focus.seconds % 3600) / 60)}m</Text><Text style={type.small}>Focus time</Text></View>
+              <View style={{ flex: 1 }}><Text style={styles.reviewValue}>{review.focus.completed}</Text><Text style={type.small}>Focus sessions</Text></View>
+            </View>
+            <Text style={[type.small, { marginTop: 10 }]}>{review.tasks.skipped} skipped · {review.tasks.missed} missed · {review.focus.interruptions} interruptions</Text>
+            <Text style={[type.small, { marginTop: 5 }]}>Task completion rate: {review.tasks.completionRate == null ? '—' : `${Math.round(review.tasks.completionRate * 100)}%`}</Text>
+            <Text style={[type.small, { marginTop: 5 }]}>Focus goal: {Math.round(review.focus.goalProgress * 100)}% of {review.focus.weeklyGoalMinutes / 60}h · Average session: {Math.round(review.focus.averageSeconds / 60)} min</Text>
+            <Text style={[type.small, { marginTop: 5 }]}>Most productive day: {review.tasks.mostProductiveDay || '—'} · Most focused day: {review.focus.mostFocusedDay || '—'}</Text>
+            <Text style={[type.small, { marginTop: 5 }]}>Health Connect: {review.health?.steps == null ? 'steps unavailable' : `${review.health.steps.toLocaleString()} steps`} · {review.health?.activeCalories == null ? 'calories unavailable' : `${Math.round(review.health.activeCalories)} active kcal`}</Text>
+          </Card>
+        )) : <Card><Text style={type.small}>Your first weekly review will be created automatically after the current week ends.</Text></Card>}
       </FadeUp>
 
       {empty ? (
@@ -162,4 +196,6 @@ const styles = StyleSheet.create({
   catHead: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   track: { height: 8, borderRadius: 4, backgroundColor: colors.panelHi, overflow: 'hidden' },
   fill: { height: 8, borderRadius: 4, backgroundColor: colors.gold },
+  reviewMetrics: { flexDirection: 'row', marginTop: 14, gap: 8 },
+  reviewValue: { fontSize: 19, fontWeight: '800', color: colors.gold, marginBottom: 2 },
 });

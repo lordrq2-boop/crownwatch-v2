@@ -2,6 +2,7 @@ import { Linking, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { planReminders } from './planner';
 import { remainingSeconds } from './focus';
+import { findNextWeatherChange, forecastTimeToDate, formatForecastTime } from './weather';
 
 // Reminders that ring out. Each reminder plays a sound for 10 to 30 seconds, like an alarm tone, then repeats
 // every few minutes until the task is done. The sound lives on a notification channel, and Android keeps a
@@ -111,6 +112,21 @@ export async function applySchedule(state, now = new Date()) {
         content: { title: 'Your weekly review', body: 'Take a moment to review last week’s tasks and focus progress.', data: { type: 'weeklyReview' } },
         trigger,
       });
+    }
+    // Weather alerts are optional and only schedule the next meaningful forecast change.
+    try { const scheduled = await Notifications.getAllScheduledNotificationsAsync(); for (const item of scheduled) { if (item.content?.data?.type === 'weatherChange') await Notifications.cancelScheduledNotificationAsync(item.identifier); } } catch (e) {}
+    if (state.settings?.weatherChangeAlerts && state.settings?.weatherData) {
+      const change = findNextWeatherChange(state.settings.weatherData, now);
+      if (change) {
+        const expectedAt = forecastTimeToDate(change.at, state.settings.weatherData).getTime();
+        const notifyAt = Math.max(now.getTime() + 60 * 1000, expectedAt - 30 *  60 * 1000);
+        if (notifyAt < expectedAt && expectedAt > now.getTime() + 60 * 1000) {
+          await Notifications.scheduleNotificationAsync({
+            content: { title: change.title, body: `${change.detail}. Expected around ${formatForecastTime(change.at, state.settings.weatherData)}.`, data: { type: 'weatherChange', kind: change.kind, at: change.at } },
+            trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: new Date(notifyAt) },
+          });
+        }
+      }
     }
     return reminders.length;
   } catch (e) {

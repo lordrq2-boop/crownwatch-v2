@@ -53,3 +53,6 @@ CROWNFLOW 0.9.1 WEATHER OUTLOOK UPDATE
 - Weather times are converted using the selected city's timezone.
 - Open-Meteo attribution remains in Weather settings, not on Home.
 - Weather refresh remains on app open/resume after the scheduled 7 AM / 2 PM local refresh slots, or manual refresh. No continuous background polling is introduced.
+
+
+CrownFlow 0.9.2 weather providers: WeatherAPI.com can be configured with a user-supplied key in Settings > Weather. The key is stored using Android secure storage and is excluded from backups. Open-Meteo remains the automatic fallback. Weather forecast times are displayed in 12-hour format with minutes.

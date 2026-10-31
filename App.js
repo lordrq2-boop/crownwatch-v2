@@ -240,7 +240,7 @@ function Root() {
   useEffect(() => {
     if (!state || !loaded.current) return;
     applySchedule(state);
-  }, [state?.tasks, state?.done, state?.sessions, state?.settings?.nagMinutes, state?.settings?.sound, state?.settings?.ringSeconds, state?.settings?.reliable, state?.focus?.settings?.weeklyReviewNotification, state?.focus?.settings?.weeklyReviewHour, state?.focus?.active?.id, state?.focus?.active?.runningSince, state?.focus?.active?.elapsedSeconds]);
+  }, [state?.tasks, state?.done, state?.sessions, state?.settings?.nagMinutes, state?.settings?.sound, state?.settings?.ringSeconds, state?.settings?.reliable, state?.settings?.weatherChangeAlerts, state?.settings?.weatherData, state?.focus?.settings?.weeklyReviewNotification, state?.focus?.settings?.weeklyReviewHour, state?.focus?.active?.id, state?.focus?.active?.runningSince, state?.focus?.active?.elapsedSeconds]);
 
   // The main-screen clock is deliberately paused on forms to keep text entry smooth.
   useEffect(() => {

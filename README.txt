@@ -44,3 +44,12 @@ CROWNFLOW 0.9.0 NOTES
 - Exported JSON backups omit the PC pairing secret.
 - The Android application ID remains com.crown.crownwatch for upgrade compatibility.
 - Weather provider attribution: Weather data by Open-Meteo.com (CC BY 4.0).
+
+
+CROWNFLOW 0.9.1 WEATHER OUTLOOK UPDATE
+- Home weather card now includes a 24-hour meaningful-change outlook and upcoming hourly conditions.
+- Forecast highlights significant rain/thunderstorms, very hot conditions, sharp warming/cooling, and strong wind gusts.
+- Optional weather-change notification can be enabled in Settings > Weather; it is scheduled up to 30 minutes before the expected change.
+- Weather times are converted using the selected city's timezone.
+- Open-Meteo attribution remains in Weather settings, not on Home.
+- Weather refresh remains on app open/resume after the scheduled 7 AM / 2 PM local refresh slots, or manual refresh. No continuous background polling is introduced.

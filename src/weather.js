@@ -14,7 +14,7 @@ export async function searchCities(query) {
   }));
 }
 
-export async function getWeather(city) {
+export async function getOpenMeteoWeather(city) {
   if (!city || !Number.isFinite(city.latitude) || !Number.isFinite(city.longitude)) throw new Error('Choose a city in Weather settings first.');
   const params = new URLSearchParams({
     latitude: String(city.latitude), longitude: String(city.longitude),
@@ -54,13 +54,13 @@ export function feelsLikeLabel(value) {
 
 export function forecastTimeToDate(value, data) {
   if (!value) return new Date(NaN);
-  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
   if (!match) return new Date(value);
   const [, y, m, d, h, min] = match.map((v, i) => i === 0 ? v : Number(v));
   return new Date(Date.UTC(y, m - 1, d, h, min) - Number(data?.utcOffsetSeconds || 0) * 1000);
 }
 
-export function formatForecastTime(value, data, options = { hour: 'numeric', minute: '2-digit' }) {
+export function formatForecastTime(value, data, options = { hour: 'numeric', minute: '2-digit', hour12: true }) {
   const date = forecastTimeToDate(value, data);
   return new Intl.DateTimeFormat(undefined, { ...options, timeZone: data?.timezone && data.timezone !== 'auto' ? data.timezone : undefined }).format(date);
 }
@@ -124,4 +124,55 @@ export function weatherNeedsRefresh(fetchedAt, now = new Date(), timezone = 'aut
   if (!fetchedAt) return true;
   const last = new Date(fetchedAt); if (!Number.isFinite(last.getTime())) return true;
   return slotKey(last, timezone) < slotKey(now, timezone);
+}
+
+
+const WEATHERAPI = 'https://api.weatherapi.com/v1';
+function timezoneOffsetSeconds(timeZone) {
+  try { const now = new Date(); const parts = new Intl.DateTimeFormat('en-GB', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(now); const v = Object.fromEntries(parts.filter((x) => x.type !== 'literal').map((x) => [x.type, Number(x.value)])); return Math.round((Date.UTC(v.year, v.month - 1, v.day, v.hour, v.minute, v.second) - now.getTime()) / 1000); } catch { return 0; }
+}
+function weatherApiCode(code) {
+  const map = { 1000: 0, 1003: 2, 1006: 3, 1009: 3, 1030: 45, 1135: 45, 1147: 48, 1063: 61, 1150: 51, 1153: 53, 1168: 56, 1171: 57, 1180: 61, 1183: 63, 1186: 63, 1189: 65, 1192: 65, 1195: 65, 1198: 66, 1201: 67, 1240: 80, 1243: 81, 1246: 82, 1273: 95, 1276: 95, 1279: 95, 1282: 99 };
+  return map[Number(code)] ?? 3;
+}
+
+async function getWeatherApiWeather(city, apiKey) {
+  const url = `${WEATHERAPI}/forecast.json?key=${encodeURIComponent(apiKey)}&q=${encodeURIComponent(`${city.latitude},${city.longitude}`)}&days=3&aqi=no&alerts=no`;
+  const response = await fetch(url);
+  const payload = await response.json();
+  if (!response.ok || payload?.error) throw new Error(payload?.error?.message || 'WeatherAPI request failed.');
+  const hourly = (payload.forecast?.forecastday || []).flatMap((day) => day.hour || []);
+  const current = payload.current || {};
+  return {
+    provider: 'weatherapi', providerLabel: 'WeatherAPI.com',
+    current: { temperature_2m: current.temp_c, apparent_temperature: current.feelslike_c, relative_humidity_2m: current.humidity, is_day: current.is_day, precipitation: current.precip_mm, weather_code: weatherApiCode(current.condition?.code), conditionText: current.condition?.text, wind_speed_10m: current.wind_kph, wind_gusts_10m: current.gust_kph },
+    hourly: {
+      time: hourly.map((h) => h.time), temperature_2m: hourly.map((h) => h.temp_c), apparent_temperature: hourly.map((h) => h.feelslike_c), precipitation_probability: hourly.map((h) => h.chance_of_rain), precipitation: hourly.map((h) => h.precip_mm), weather_code: hourly.map((h) => weatherApiCode(h.condition?.code)), wind_speed_10m: hourly.map((h) => h.wind_kph), wind_gusts_10m: hourly.map((h) => h.gust_kph),
+    },
+    daily: { time: (payload.forecast?.forecastday || []).map((d) => d.date), weather_code: (payload.forecast?.forecastday || []).map((d) => weatherApiCode(d.day?.condition?.code)), temperature_2m_max: (payload.forecast?.forecastday || []).map((d) => d.day?.maxtemp_c), temperature_2m_min: (payload.forecast?.forecastday || []).map((d) => d.day?.mintemp_c), precipitation_probability_max: (payload.forecast?.forecastday || []).map((d) => d.day?.daily_chance_of_rain) },
+    fetchedAt: new Date().toISOString(), timezone: payload.location?.tz_id || city.timezone || 'auto', utcOffsetSeconds: timezoneOffsetSeconds(payload.location?.tz_id || city.timezone || 'UTC'),
+  };
+}
+
+// WeatherAPI is preferred when the user has supplied a key. Open-Meteo remains
+// an automatic fallback so the dashboard continues working if the primary fails.
+export async function getWeather(city, apiKey = '') {
+  if (apiKey && String(apiKey).trim()) {
+    try { return await getWeatherApiWeather(city, String(apiKey).trim()); }
+    catch (primaryError) {
+      try { const fallback = await getOpenMeteoWeather(city); return { ...fallback, provider: 'open-meteo', providerLabel: 'Open-Meteo', fallbackFrom: 'weatherapi', primaryError: primaryError.message }; }
+      catch (fallbackError) { throw new Error(`WeatherAPI failed (${primaryError.message}); Open-Meteo fallback also failed (${fallbackError.message}).`); }
+    }
+  }
+  return getOpenMeteoWeather(city);
+}
+
+
+export async function validateWeatherApiKey(apiKey) {
+  const key = String(apiKey || '').trim();
+  if (!key) throw new Error('Enter a WeatherAPI key first.');
+  const response = await fetch(`${WEATHERAPI}/current.json?key=${encodeURIComponent(key)}&q=London&aqi=no`);
+  const payload = await response.json();
+  if (!response.ok || payload?.error) throw new Error(payload?.error?.message || 'WeatherAPI key could not be verified.');
+  return true;
 }

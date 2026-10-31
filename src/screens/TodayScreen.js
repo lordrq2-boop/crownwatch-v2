@@ -76,12 +76,12 @@ export default function TodayScreen({ items, strip, streak, now, activity, stepG
           {weather?.data?.current ? <View style={{ marginTop: 13, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.line }}>
             <Text style={type.label}>WHAT'S NEXT</Text>
             {nextWeatherChange ? <View style={{ marginTop: 7, padding: 11, borderRadius: 12, backgroundColor: nextWeatherChange.severity >= 3 ? '#30221A' : colors.panel }}>
-              <Text style={{ color: colors.text, fontSize: 13, fontWeight: '800' }}>{nextWeatherChange.title} · {formatForecastTime(nextWeatherChange.at, weather.data)}</Text>
+              <Text style={{ color: colors.text, fontSize: 13, fontWeight: '800' }}>{nextWeatherChange.title} · {formatForecastTime(nextWeatherChange.at, weather.data, { hour: 'numeric', minute: '2-digit', hour12: true })}</Text>
               <Text style={[type.small, { marginTop: 3 }]}>{nextWeatherChange.detail}. {weatherLabel(nextWeatherChange.weatherCode)}{Number.isFinite(nextWeatherChange.temperature) ? `, ${Math.round(nextWeatherChange.temperature)}°` : ''}.</Text>
             </View> : null}
             {upcomingWeather.length ? <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 11 }}>
               {upcomingWeather.map((item, index) => <View key={`${item.time}-${index}`} style={{ alignItems: 'center', flex: 1 }}>
-                <Text style={{ color: colors.muted, fontSize: 10 }}>{formatForecastTime(item.time, weather.data, { hour: 'numeric' })}</Text>
+                <Text style={{ color: colors.muted, fontSize: 10 }}>{formatForecastTime(item.time, weather.data, { hour: 'numeric', minute: '2-digit', hour12: true })}</Text>
                 <Text style={{ color: colors.text, fontSize: 11, fontWeight: '700', marginTop: 4 }}>{weatherLabel(item.code)}</Text>
                 <Text style={{ color: colors.text, fontSize: 13, fontWeight: '800', marginTop: 3 }}>{Number.isFinite(item.temperature) ? `${Math.round(item.temperature)}°` : '—'}</Text>
                 {Number(item.rainProbability) >= 30 ? <Text style={{ color: colors.blue || colors.muted, fontSize: 9, marginTop: 2 }}>{Math.round(item.rainProbability)}% rain</Text> : null}

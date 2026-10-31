@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Linking, Image } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, RefreshControl, Pressable, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Btn, Card, Icon, IconBadge, ProgressRing, SectionHeader, useInsets } from '../ui';
 import { CountUp, FadeUp, Pop, Tap, Wiggle } from '../anim';
@@ -9,7 +9,7 @@ import { DAY_LETTERS, fmtLongDate, greeting } from '../dates';
 import { fmtSteps } from '../categories';
 import { healthMessage } from '../health';
 import { elapsedSeconds } from '../focus';
-import { weatherLabel } from '../weather';
+import { weatherLabel, feelsLikeLabel, findNextWeatherChange, getUpcomingForecast, formatForecastTime } from '../weather';
 
 const fmtNumber = (n) => n == null ? '—' : Math.round(n).toLocaleString();
 const fmtDistance = (m) => m == null ? '—' : `${(m / 1000).toFixed(2)} km`;
@@ -35,6 +35,8 @@ export default function TodayScreen({ items, strip, streak, now, activity, stepG
   const stepProgress = steps == null ? 0 : Math.min(1, steps / Math.max(1, stepGoal));
   const focusMinutes = Math.floor(((focus?.history || []).filter((s) => s.type === 'focus' && new Date(s.startedAt).toDateString() === now.toDateString()).reduce((n, s) => n + (s.actualFocusSeconds || 0), 0) + (focus?.active?.type === 'focus' ? elapsedSeconds(focus.active) : 0)) / 60);
   const focusGoal = focus?.settings?.dailyGoalMinutes || 120;
+  const nextWeatherChange = findNextWeatherChange(weather?.data, now);
+  const upcomingWeather = getUpcomingForecast(weather?.data, now, 4);
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={{ paddingTop: insets.top + 12, paddingHorizontal: 20, paddingBottom: 30 }} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={colors.gold} colors={[colors.gold]} progressBackgroundColor={colors.panel} />}>
@@ -61,14 +63,9 @@ export default function TodayScreen({ items, strip, streak, now, activity, stepG
             <View style={{ flex: 1 }}>
               <Text style={type.label}>WEATHER</Text>
               <Text style={[type.title, { marginTop: 4 }]}>{weather?.city?.name || 'Set your weather city'}</Text>
-              <Text style={[type.small, { marginTop: 2 }]}>{weather?.data?.current ? weatherLabel(weather.data.current.weather_code) : (weather?.error || 'Choose a city in Settings to see local weather.')}</Text>
-              {weather?.data?.fetchedAt ? <Text style={[type.small, { marginTop: 3, fontSize: 11 }]}>Updated {new Date(weather.data.fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</Text> : null}
+              <Text style={[type.small, { marginTop: 2 }]}>{weather?.data?.current ? `${weatherLabel(weather.data.current.weather_code)} · ${feelsLikeLabel(weather.data.current.apparent_temperature)}` : (weather?.error || 'Choose a city in Settings to see local weather.')}</Text>
+              {weather?.data?.fetchedAt ? <Text style={[type.small, { marginTop: 3, fontSize: 10 }]}>Updated {new Date(weather.data.fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</Text> : null}
               {weather?.error ? <Text style={{ color: colors.pink, fontSize: 11, marginTop: 3 }}>{weather.error}</Text> : null}
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5 }}>
-                <Pressable onPress={() => Linking.openURL('https://open-meteo.com/')} accessibilityRole="link"><Text style={{ color: colors.muted, fontSize: 10 }}>Weather data by Open-Meteo.com</Text></Pressable>
-                <Text style={{ color: colors.faint, fontSize: 10 }}> · </Text>
-                <Pressable onPress={() => Linking.openURL('https://creativecommons.org/licenses/by/4.0/')} accessibilityRole="link"><Text style={{ color: colors.muted, fontSize: 10 }}>CC BY 4.0</Text></Pressable>
-              </View>
             </View>
             {weather?.data?.current ? <View style={{ alignItems: 'flex-end' }}>
               <Text style={{ color: colors.text, fontSize: 30, fontWeight: '800' }}>{Math.round(weather.data.current.temperature_2m)}°</Text>
@@ -76,6 +73,21 @@ export default function TodayScreen({ items, strip, streak, now, activity, stepG
               <Text style={type.small}>H {Math.round(weather.data.daily?.temperature_2m_max?.[0] ?? 0)}° · L {Math.round(weather.data.daily?.temperature_2m_min?.[0] ?? 0)}°</Text>
             </View> : <Icon name="cloud-outline" size={28} color={colors.gold} />}
           </View>
+          {weather?.data?.current ? <View style={{ marginTop: 13, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.line }}>
+            <Text style={type.label}>WHAT'S NEXT</Text>
+            {nextWeatherChange ? <View style={{ marginTop: 7, padding: 11, borderRadius: 12, backgroundColor: nextWeatherChange.severity >= 3 ? '#30221A' : colors.panel }}>
+              <Text style={{ color: colors.text, fontSize: 13, fontWeight: '800' }}>{nextWeatherChange.title} · {formatForecastTime(nextWeatherChange.at, weather.data)}</Text>
+              <Text style={[type.small, { marginTop: 3 }]}>{nextWeatherChange.detail}. {weatherLabel(nextWeatherChange.weatherCode)}{Number.isFinite(nextWeatherChange.temperature) ? `, ${Math.round(nextWeatherChange.temperature)}°` : ''}.</Text>
+            </View> : null}
+            {upcomingWeather.length ? <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 11 }}>
+              {upcomingWeather.map((item, index) => <View key={`${item.time}-${index}`} style={{ alignItems: 'center', flex: 1 }}>
+                <Text style={{ color: colors.muted, fontSize: 10 }}>{formatForecastTime(item.time, weather.data, { hour: 'numeric' })}</Text>
+                <Text style={{ color: colors.text, fontSize: 11, fontWeight: '700', marginTop: 4 }}>{weatherLabel(item.code)}</Text>
+                <Text style={{ color: colors.text, fontSize: 13, fontWeight: '800', marginTop: 3 }}>{Number.isFinite(item.temperature) ? `${Math.round(item.temperature)}°` : '—'}</Text>
+                {Number(item.rainProbability) >= 30 ? <Text style={{ color: colors.blue || colors.muted, fontSize: 9, marginTop: 2 }}>{Math.round(item.rainProbability)}% rain</Text> : null}
+              </View>)}
+            </View> : null}
+          </View> : null}
         </Card>
       </FadeUp> : null}
 

@@ -2,14 +2,14 @@
   "expo": {
     "name": "CrownFlow",
     "slug": "crownflow",
-    "version": "0.8.0",
+    "version": "0.9.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "android": {
       "package": "com.crown.crownwatch",
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundColor": "#141418",
+        "backgroundColor": "#0B0D10",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "permissions": [
@@ -19,20 +19,20 @@
         "android.permission.health.READ_DISTANCE",
         "android.permission.health.READ_WEIGHT"
       ],
-      "versionCode": 8,
+      "versionCode": 9,
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.SYSTEM_ALERT_WINDOW",
-        "android.permission.INTERNET"
+        "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
     "plugins": [
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#0E0E12",
+          "backgroundColor": "#0B0D10",
           "image": "./assets/splash-icon.png",
           "imageWidth": 200
         }
@@ -77,9 +77,21 @@
           "enableBackgroundPlayback": true,
           "enableBackgroundRecording": false
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "CrownFlow uses approximate location only when you choose Use current location to set your weather city. It does not track you in the background.",
+          "isAndroidBackgroundLocationEnabled": false
+        }
       ]
     ],
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#0E0E12"
+    "backgroundColor": "#0B0D10",
+    "splash": {
+      "backgroundColor": "#0B0D10",
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain"
+    }
   }
 }

@@ -1,4 +1,4 @@
-CrownFlow 0.8.0
+CrownFlow 0.9.0
 
 CrownFlow is an offline-first weekly accountability app. Existing CrownWatch 0.7 users should install this release as an upgrade; the Android application ID remains com.crown.crownwatch and the local storage key remains taskalarm.v1.
 
@@ -32,3 +32,15 @@ Important test checklist
 7. Verify task reminders, ringtone selection, QR/photo proof, Health Connect, Walk Sessions, and Android Back navigation.
 
 This source has passed static JavaScript/JSX parsing and focused timer/review logic tests. A native Android release build and on-device audio/background playback tests have not yet been run in this environment.
+
+
+CROWNFLOW 0.9.0 NOTES
+- The History destination is now accessed through Insights as Detailed History.
+- Settings are grouped into separate pages.
+- Weather uses Open-Meteo forecasts and Android’s built-in geocoder for one-time location-to-city lookup. Location is requested only after the user taps Use current location once; no background location permission is used.
+- Weather checks on app open/resume when the 7:00 or 14:00 local city refresh slot has passed, and can be refreshed manually or with Home pull-to-refresh.
+- Home pull-to-refresh refreshes Health Connect and weather together.
+- Periodic Health Connect polling and the periodic weekly-review timer were removed to reduce background work.
+- Exported JSON backups omit the PC pairing secret.
+- The Android application ID remains com.crown.crownwatch for upgrade compatibility.
+- Weather provider attribution: Weather data by Open-Meteo.com (CC BY 4.0).

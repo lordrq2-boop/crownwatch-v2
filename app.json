@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "CrownWatch",
-    "slug": "crownwatch",
-    "version": "0.7.0",
+    "name": "CrownFlow",
+    "slug": "crownflow",
+    "version": "0.8.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "android": {
@@ -19,7 +19,7 @@
         "android.permission.health.READ_DISTANCE",
         "android.permission.health.READ_WEIGHT"
       ],
-      "versionCode": 7,
+      "versionCode": 8,
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.READ_EXTERNAL_STORAGE",
@@ -52,7 +52,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "CrownWatch uses the camera to scan your daily code and take proof photos.",
+          "cameraPermission": "CrownFlow uses the camera to scan your daily code and take proof photos.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }
@@ -67,6 +67,15 @@
           "android": {
             "minSdkVersion": 26
           }
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "enableBackgroundPlayback": true,
+          "enableBackgroundRecording": false
         }
       ]
     ],

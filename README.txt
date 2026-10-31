@@ -1,80 +1,34 @@
-CrownWatch 0.7
-=================================================================
+CrownFlow 0.8.0
 
-WHAT CHANGED IN 0.7
------------------------------------------------------------------
+CrownFlow is an offline-first weekly accountability app. Existing CrownWatch 0.7 users should install this release as an upgrade; the Android application ID remains com.crown.crownwatch and the local storage key remains taskalarm.v1.
 
-Health Connect activity dashboard
-  The Home screen now shows today's steps against a 3,000-step default goal, active calories, distance, and the latest
-  weight reading available in Health Connect. The step goal can be changed in Settings. Health measurements are read
-  from Health Connect; CrownWatch does not generate or estimate missing measurements.
+Core features
+- Weekly task planning, reminders, task proof, task timers, carry-over, and read-only history.
+- Pomodoro Focus timer with 25-minute focus, 5-minute short break, and a 15-minute long break after four completed focus sessions. Durations and daily/weekly goals are configurable.
+- Focus sessions can optionally be associated with a planned task. Focus never completes a task automatically.
+- Pause, resume, end early, and distraction tracking. Timer progress is calculated from saved timestamps so it can recover after backgrounding or reopening.
+- Optional offline ambient sounds: Rain, Forest, Fireplace, White noise, and Brown noise. Playback can continue in the background using Android media playback controls. No microphone permission is requested.
+- Task and Focus history, Focus statistics, and automatically saved weekly reviews with manual access in Insights. Weekly review reminders are opt-in and off by default.
+- Health Connect activity dashboard and weekly steps/active-calorie reporting remain separate from productivity statistics.
+- PC key pairing, QR proof, photo proof, Walk Sessions, notifications, and existing reminder jingles are retained.
 
-  CrownWatch requests read access for Steps, Active Calories Burned, Distance, and Weight. Each permission can be
-  granted separately. A missing optional permission or missing source data is shown as unavailable rather than zero.
-  Weight is read from the most recent record returned from the last 30 days.
+Data and compatibility
+- Existing task, completion, reminder, pairing, and walk-session data is migrated in place.
+- Do not uninstall the previous app as a troubleshooting step; uninstalling may erase local data.
+- The application ID is intentionally unchanged to preserve upgrade compatibility. APK signing compatibility still needs to be verified against the previously installed release.
 
-  The app refreshes when it opens, when it returns to the foreground, when Insights is opened, and every 10 minutes
-  while the app is active. Health Connect sources can publish data with a delay, so the 10-minute refresh is not a
-  guarantee that every upstream fitness app has already written its latest reading.
+Build
+- GitHub Actions builds the arm64-v8a release APK on pushes to main or by manual workflow dispatch.
+- Open Actions, select Build APK, and download the CrownFlow-apk artifact from a successful run.
+- Install over the previous version to test the upgrade path. Confirm that tasks, history, reminders, and PC pairing are still present.
 
-Separate Walk Session
-  Start a 30-minute Walk Session from Home. It measures the increase in daily steps from the starting count and does
-  not complete or prove a productivity task. You can return Home while the session remains active. The session expires
-  automatically after 30 minutes, including after CrownWatch has been backgrounded or closed.
+Important test checklist
+1. Upgrade from CrownWatch 0.7 without uninstalling; verify existing data remains.
+2. Start a Focus session, pause it, resume it, background the app, and reopen it. Verify the remaining time is correct.
+3. Let a Focus session complete and verify it records once and starts the appropriate break. Confirm the fourth completed Focus session leads to a long break.
+4. Use the distraction control and verify distraction time is excluded from focus time.
+5. Play each ambient loop, change sounds, adjust volume, navigate away from Focus, lock the screen, and test incoming-call/audio interruption behavior.
+6. Verify the weekly review is created once per closed week and does not change after creation. Verify the Monday reminder is off by default and can be enabled.
+7. Verify task reminders, ringtone selection, QR/photo proof, Health Connect, Walk Sessions, and Android Back navigation.
 
-Productivity task proof
-  Steps are no longer a task-proof option. Walk tasks now use a normal timer by default. Existing saved tasks that used
-  Tasks that used Steps proof are migrated to 30-minute timer tasks so they remain in the plan and history.
-
-Insights
-  Health this week now includes total steps and active calories from Monday through the current time. Existing task
-  streak, completion, on-time, and category insights remain.
-
-Navigation and settings
-  Android Back now returns to the previous app screen, returns to Home from other tabs, and exits only from Home.
-  Running task timers can be left and resumed without cancelling them. House Rules have been removed from Settings;
-  their enforcement remains unchanged. A temporary Reset test data control clears tasks/history and active sessions
-  while preserving preferences and PC pairing. Remove this control before a public/final release.
-
-HOW TO BUILD THE APK WITH GITHUB ACTIONS
------------------------------------------------------------------
-
-1. Upload/commit the complete project folder to the main branch. Keep the .github/workflows/build-apk.yml file.
-2. GitHub automatically starts the Build APK workflow after a push to main. You can also open Actions and run it manually.
-3. Wait for the workflow to finish successfully.
-4. Open the successful run, scroll to Artifacts, and download CrownWatch-apk.
-5. Extract the artifact and install app-release.apk.
-
-The GitHub workflow runs npm ci itself. Do not upload node_modules. Keep package.json and package-lock.json together.
-The workflow creates the native Android project using Expo prebuild before running Gradle.
-
-UPDATE SAFETY
------------------------------------------------------------------
-
-The Android application ID remains com.crown.crownwatch. The app version is 0.7.0 and Android versionCode is 7.
-For an in-place Android update, the new APK must be signed with the same signing certificate as the installed APK.
-The GitHub workflow must use a persistent signing keystore for reliable updates between fresh GitHub-hosted runners.
-Do not uninstall the current app until you have confirmed that the new APK can update it, or you have backed up any
-local data you need to keep.
-
-PRESERVED FEATURES
------------------------------------------------------------------
-
-  - CrownWatch jingle and phone ringtone selection.
-  - Repeated notifications, exact alarm scheduling, and reminder settings.
-  - PC key tool pairing and daily QR code verification.
-  - Photo proof, timed task proof, weekly planning, carry-over, skip rules, history, and existing insights.
-  - Offline-first operation. Health Connect data is read locally; no account or cloud sync is added.
-
-TESTING CHECKLIST
------------------------------------------------------------------
-
-  - Android Back from Settings, task details, task form, camera proof, pairing, timer, and Walk Session.
-  - Leave a task timer, return Home, resume it, and finish it.
-  - Connect Health Connect and grant each requested permission.
-  - Verify steps, active calories, distance, and latest weight against Health Connect.
-  - Verify the 3,000-step goal and change it in Settings.
-  - Start a Walk Session, verify its step delta, leave it running, and verify it expires after 30 minutes.
-  - Check weekly steps and active calories in Insights.
-  - Verify old task data and PC pairing remain after the 0.7 migration.
-  - Re-test jingle, phone ringtone, reminder intervals, exact timing, and notifications.
+This source has passed static JavaScript/JSX parsing and focused timer/review logic tests. A native Android release build and on-device audio/background playback tests have not yet been run in this environment.

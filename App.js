@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import { AppState, Alert, BackHandler, View, StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts, PixelifySans_500Medium, PixelifySans_700Bold } from '@expo-google-fonts/pixelify-sans';
@@ -14,12 +15,16 @@ import TimerScreen from './src/screens/TimerScreen';
 import WalkScreen from './src/screens/WalkScreen';
 import ProofScreen from './src/screens/ProofScreen';
 import PairScreen from './src/screens/PairScreen';
+import FocusScreen from './src/screens/FocusScreen';
+import { completeFocusSession, distractFocus, makeFocusSession, migrateFocus, nextPomodoroType, pauseFocus, remainingSeconds, resumeFocus } from './src/focus';
+import { addMissingWeeklyReviews } from './src/weeklyReview';
+import { ambientSound as getAmbientSound } from './src/ambient';
 import TabBar from './src/TabBar';
 import Celebration from './src/Celebration';
 import { AnimContext } from './src/anim';
 import { loadState, saveState } from './src/storage';
 import { applySchedule, clearShown, openRingtonePicker, sendTest, setupNotifications, useLastNotificationResponse } from './src/notify';
-import { activityToday, activityWeek, connectHealth, healthMessage, healthStatus, openHealthApp } from './src/health';
+import { activityToday, activityBetween, activityWeek, connectHealth, healthMessage, healthStatus, openHealthApp } from './src/health';
 import { ErrorBoundary, installErrorCapture } from './src/errors';
 import { addDays, atTime, dateKey, parseKey } from './src/dates';
 import { MAX_PASSES, currentWeekStart, doneKey, nextWeekStart, previousWeekTasks, tasksOfWeek, todaysItems, undoMsLeft, weekEndKey } from './src/planner';
@@ -44,6 +49,8 @@ function Root() {
   const [health, setHealth] = useState({ state: 'unknown', permissions: {} });
   const [activity, setActivity] = useState({ steps: null, activeCalories: null, distanceMeters: null, weightKg: null });
   const [healthWeek, setHealthWeek] = useState({ steps: null, activeCalories: null });
+  const [ambientPlaying, setAmbientPlaying] = useState(false);
+  const ambientPlayer = useAudioPlayer(null);
   const loaded = useRef(false);
   const healthBusy = useRef(false);
   const handledResponse = useRef(null);
@@ -70,15 +77,83 @@ function Root() {
     }
   }, []);
 
+  const ambientSettings = state?.focus?.settings || {};
+  const ambientShouldPlay = ambientPlaying && (ambientSettings.ambientDuringBreaks !== false || !state?.focus?.active || state.focus.active.type === 'focus');
+  const ambientLoaded = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!ambientShouldPlay || !state) {
+      ambientPlayer.pause();
+      try { ambientPlayer.setActiveForLockScreen(false); } catch (e) {}
+      return undefined;
+    }
+    (async () => {
+      try {
+        await setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: true, interruptionMode: 'doNotMix' });
+        const sound = getAmbientSound(ambientSettings.ambientSound);
+        if (ambientLoaded.current !== sound.id) {
+          ambientPlayer.replace(sound.source);
+          ambientLoaded.current = sound.id;
+        }
+        ambientPlayer.loop = true;
+        if (!cancelled) {
+          ambientPlayer.setActiveForLockScreen(true, { title: `${sound.label} ambience`, artist: 'CrownFlow', albumTitle: 'Focus sounds' });
+          ambientPlayer.play();
+        }
+      } catch (e) {
+        if (!cancelled) setAmbientPlaying(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [ambientShouldPlay, ambientSettings.ambientSound]);
+
+  useEffect(() => {
+    ambientPlayer.volume = Math.max(0, Math.min(1, Number(ambientSettings.ambientVolume ?? 0.35)));
+  }, [ambientSettings.ambientVolume]);
+
   useEffect(() => {
     (async () => {
       await checkNotifications();
-      const saved = await loadState();
+      const saved = addMissingWeeklyReviews(await loadState(), new Date());
       loaded.current = true;
       setState(saved);
       await refreshHealth();
     })();
   }, []);
+
+  useEffect(() => {
+    if (!state || !loaded.current) return;
+    setState((current) => current ? addMissingWeeklyReviews(current, new Date()) : current);
+  }, [state?.tasks, state?.done, state?.focus?.history]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setState((current) => current && loaded.current ? addMissingWeeklyReviews(current, new Date()) : current);
+    }, 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (!state || health.state !== 'ready') return undefined;
+    const reviewKeys = Object.keys(state.focus?.weeklyReviews || {}).filter((key) => !state.focus.weeklyReviews[key].health);
+    if (!reviewKeys.length) return undefined;
+    let cancelled = false;
+    Promise.all(reviewKeys.map(async (key) => {
+      const start = parseKey(key);
+      return [key, await activityBetween(start, addDays(start, 7), health)];
+    })).then((results) => {
+      if (cancelled) return;
+      setState((current) => {
+        if (!current) return current;
+        const focus = migrateFocus(current.focus);
+        const weeklyReviews = { ...focus.weeklyReviews };
+        for (const [key, value] of results) if (weeklyReviews[key] && !weeklyReviews[key].health) weeklyReviews[key] = { ...weeklyReviews[key], health: value };
+        return { ...current, focus: { ...focus, weeklyReviews } };
+      });
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [state?.focus?.weeklyReviews, health.state]);
 
   // Save every state change, including pairing and Walk Session state. Alarm
   // scheduling is kept separate so health refreshes don't rebuild notifications.
@@ -90,7 +165,7 @@ function Root() {
   useEffect(() => {
     if (!state || !loaded.current) return;
     applySchedule(state);
-  }, [state?.tasks, state?.done, state?.sessions, state?.settings?.nagMinutes, state?.settings?.sound, state?.settings?.ringSeconds, state?.settings?.reliable]);
+  }, [state?.tasks, state?.done, state?.sessions, state?.settings?.nagMinutes, state?.settings?.sound, state?.settings?.ringSeconds, state?.settings?.reliable, state?.focus?.settings?.weeklyReviewNotification, state?.focus?.settings?.weeklyReviewHour, state?.focus?.active?.id, state?.focus?.active?.runningSince, state?.focus?.active?.elapsedSeconds]);
 
   // The main-screen clock is deliberately paused on forms to keep text entry smooth.
   useEffect(() => {
@@ -137,7 +212,7 @@ function Root() {
     return () => clearInterval(id);
   }, [refreshHealth]);
 
-  // A Walk Session expires after 30 minutes even if CrownWatch was backgrounded.
+  // A Walk Session expires after 30 minutes even if CrownFlow was backgrounded.
   useEffect(() => {
     if (!state?.walkSession?.expiresAt) return undefined;
     const checkExpiry = () => {
@@ -151,6 +226,25 @@ function Root() {
     const id = setInterval(checkExpiry, 1000);
     return () => clearInterval(id);
   }, [state?.walkSession?.expiresAt]);
+
+  // Pomodoro completion is timestamp-based; this check only updates the UI/state.
+  // Rechecking on foreground also catches a session that expired while Android suspended the app.
+  useEffect(() => {
+    if (!state?.focus?.active) return undefined;
+    const checkFocusExpiry = () => {
+      setState((current) => {
+        const active = current?.focus?.active;
+        if (!active || remainingSeconds(active, Date.now()) > 0) return current;
+        const completed = completeFocusSession(active, Date.now());
+        const history = [...(current.focus.history || []), completed];
+        const nextType = active.type === 'focus' ? nextPomodoroType(history, current.focus.settings) : null;
+        return { ...current, focus: { ...current.focus, history, active: nextType ? makeFocusSession(nextType, current.focus.settings, active.taskId) : null } };
+      });
+    };
+    checkFocusExpiry();
+    const id = setInterval(checkFocusExpiry, 1000);
+    return () => clearInterval(id);
+  }, [state?.focus?.active?.id]);
 
   // Opening Insights triggers a fresh read, in addition to the regular refresh.
   useEffect(() => { if (tab === 'insights') refreshHealth(); }, [tab, refreshHealth]);
@@ -169,6 +263,8 @@ function Root() {
       if (handledResponse.current === id) return;
       handledResponse.current = id;
       const data = response.notification.request.content.data || {};
+      if (data.type === 'focusComplete') { setTab('focus'); return; }
+      if (data.type === 'weeklyReview') { setTab('insights'); return; }
       const item = todaysItems(state, new Date()).find((i) => i.task.id === data.taskId);
       if (!item) return;
       const pending = item.status === 'upcoming' || item.status === 'overdue';
@@ -298,6 +394,22 @@ function Root() {
   const carrySource = (target) => (target === 'next' && thisWeek.length > 0 ? thisWeek : previousWeekTasks(state, now));
   const openTask = (task) => setScreen({ name: 'task', taskId: task.id });
   const changeSettings = (patch) => update((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
+  const startFocus = (taskId = null, type = 'focus') => {
+    if (state.focus?.active) { setTab('focus'); return; }
+    update((s) => ({ ...s, focus: { ...migrateFocus(s.focus), active: makeFocusSession(type, s.focus?.settings || migrateFocus(null).settings, taskId) } }));
+    setTab('focus');
+  };
+  const updateActiveFocus = (fn) => update((s) => ({ ...s, focus: { ...migrateFocus(s.focus), active: fn(s.focus?.active) } }));
+  const pauseActiveFocus = () => updateActiveFocus((a) => pauseFocus(a));
+  const resumeActiveFocus = () => updateActiveFocus((a) => resumeFocus(a));
+  const distractActiveFocus = () => updateActiveFocus((a) => distractFocus(a));
+  const backToFocus = () => updateActiveFocus((a) => resumeFocus(a));
+  const endActiveFocus = () => update((s) => {
+    const f = migrateFocus(s.focus);
+    if (!f.active) return s;
+    const ended = completeFocusSession(f.active);
+    return { ...s, focus: { ...f, active: null, history: [...f.history, ended] } };
+  });
   const runTest = async () => setTestMsg(await sendTest(settings));
   const connect = async () => {
     const h = await connectHealth();
@@ -371,15 +483,16 @@ function Root() {
     return frame(<CarryOverScreen tasks={carrySource(screen.target)} target={screen.target} onConfirm={(chosen) => carryOver(chosen, screen.target)} onBack={close} />);
   }
   if (screen?.name === 'settings') {
-    return frame(<SettingsScreen paired={paired} notif={notif} testMsg={testMsg} settings={settings} health={health} stepGoal={settings.stepGoal || 3000} onBack={close} onPair={() => setScreen({ name: 'pair', returnTo: screen })} onRecheck={checkNotifications} onTest={runTest} onChange={changeSettings} onPickRingtone={openRingtonePicker} onConnectHealth={connect} onRefreshHealth={refreshHealth} onOpenHealth={openHealthApp} onResetTestData={resetTestData} />);
+    return frame(<SettingsScreen paired={paired} notif={notif} testMsg={testMsg} settings={settings} health={health} stepGoal={settings.stepGoal || 3000} onBack={close} onPair={() => setScreen({ name: 'pair', returnTo: screen })} onRecheck={checkNotifications} onTest={runTest} onChange={changeSettings} onPickRingtone={openRingtonePicker} onConnectHealth={connect} onRefreshHealth={refreshHealth} onOpenHealth={openHealthApp} onResetTestData={resetTestData} focusSettings={state.focus?.settings} onFocusChange={(patch) => update((s) => ({ ...s, focus: { ...migrateFocus(s.focus), settings: { ...migrateFocus(s.focus).settings, ...patch } } }))} />);
   }
 
   return frame(
     <View style={{ flex: 1 }}>
       <View style={{ flex: 1 }}>
-        {tab === 'today' ? <TodayScreen items={items} strip={strip} streak={streak} now={now} activity={activity} stepGoal={settings.stepGoal || 3000} health={health} walkSession={state.walkSession} notif={notif} needsPlan={thisWeek.length === 0} activeTimerItem={activeTimerItem} onOpenTask={openTask} onAction={prove} onAdd={() => setScreen({ name: 'form', week: 'this' })} onSettings={() => setScreen({ name: 'settings' })} onPlan={() => (previousWeekTasks(state, now).length > 0 ? setScreen({ name: 'carry', target: 'this' }) : setScreen({ name: 'form', week: 'this' }))} onConnectHealth={connect} onStartWalk={startOrResumeWalk} onResumeTimer={() => activeTimerItem && setScreen({ name: 'timer', taskId: activeTimerItem.task.id, dateKey: activeTimerItem.dateKey })} /> : null}
+        {tab === 'today' ? <TodayScreen items={items} strip={strip} streak={streak} now={now} activity={activity} stepGoal={settings.stepGoal || 3000} health={health} walkSession={state.walkSession} notif={notif} needsPlan={thisWeek.length === 0} activeTimerItem={activeTimerItem} onOpenTask={openTask} onAction={prove} onAdd={() => setScreen({ name: 'form', week: 'this' })} onSettings={() => setScreen({ name: 'settings' })} onPlan={() => (previousWeekTasks(state, now).length > 0 ? setScreen({ name: 'carry', target: 'this' }) : setScreen({ name: 'form', week: 'this' }))} onConnectHealth={connect} onStartWalk={startOrResumeWalk} onResumeTimer={() => activeTimerItem && setScreen({ name: 'timer', taskId: activeTimerItem.task.id, dateKey: activeTimerItem.dateKey })} focus={state.focus} onFocus={() => setTab('focus')} /> : null}
+        {tab === 'focus' ? <FocusScreen focus={migrateFocus(state.focus)} tasks={state.tasks} now={now} onStart={startFocus} onPause={pauseActiveFocus} onResume={resumeActiveFocus} onFinish={endActiveFocus} onDistract={distractActiveFocus} onBackToFocus={backToFocus} onStartBreak={(type) => startFocus(null, type)} onSettings={() => setScreen({ name: 'settings' })} ambientPlaying={ambientPlaying} ambientSound={state.focus?.settings?.ambientSound || 'rain'} ambientVolume={state.focus?.settings?.ambientVolume ?? 0.35} onAmbientToggle={() => setAmbientPlaying((v) => !v)} onAmbientSound={(v) => update((s) => ({ ...s, focus: { ...migrateFocus(s.focus), settings: { ...migrateFocus(s.focus).settings, ambientSound: v } } }))} onAmbientVolume={(v) => update((s) => ({ ...s, focus: { ...migrateFocus(s.focus), settings: { ...migrateFocus(s.focus).settings, ambientVolume: v } } }))} /> : null}
         {tab === 'week' ? <WeekScreen thisWeek={thisWeek} nextWeek={nextWeek} weekStart={cw} nextStart={nw} canCarry={previousWeekTasks(state, now).length > 0} onOpenTask={openTask} onAdd={(w) => setScreen({ name: 'form', week: w })} onCarry={(t) => setScreen({ name: 'carry', target: t })} /> : null}
-        {tab === 'history' ? <HistoryScreen state={state} now={nowCoarse} /> : null}
+        {tab === 'history' ? <HistoryScreen state={state} now={nowCoarse} focus={state.focus} /> : null}
         {tab === 'insights' ? <InsightsScreen state={state} now={nowCoarse} healthWeek={healthWeek} /> : null}
       </View>
       <TabBar tab={tab} onChange={setTab} onAdd={() => setScreen({ name: 'form', week: 'this' })} />

@@ -154,15 +154,49 @@ async function getWeatherApiWeather(city, apiKey) {
   };
 }
 
-// WeatherAPI is preferred when the user has supplied a key. Open-Meteo remains
-// an automatic fallback so the dashboard continues working if the primary fails.
+function aggregateWeather(openMeteo, weatherApi) {
+  const valid = (v) => v !== null && v !== undefined && Number.isFinite(Number(v));
+  const average = (a, b) => valid(a) && valid(b) ? (Number(a) + Number(b)) / 2 : (valid(a) ? Number(a) : valid(b) ? Number(b) : null);
+  const apiHours = new Map((weatherApi.hourly?.time || []).map((time, i) => [String(time).replace(' ', 'T').slice(0, 13), i]));
+  const hourly = { ...openMeteo.hourly };
+  ['temperature_2m', 'apparent_temperature', 'precipitation_probability'].forEach((key) => {
+    hourly[key] = (openMeteo.hourly?.time || []).map((time, i) => {
+      const j = apiHours.get(String(time).replace(' ', 'T').slice(0, 13));
+      return j == null ? openMeteo.hourly?.[key]?.[i] : average(openMeteo.hourly?.[key]?.[i], weatherApi.hourly?.[key]?.[j]);
+    });
+  });
+  hourly.weather_code = (openMeteo.hourly?.time || []).map((time, i) => {
+    const j = apiHours.get(String(time).replace(' ', 'T').slice(0, 13));
+    if (j == null) return openMeteo.hourly?.weather_code?.[i];
+    const a = Number(openMeteo.hourly?.weather_code?.[i] || 0);
+    const b = Number(weatherApi.hourly?.weather_code?.[j] || 0);
+    const wet = (code) => [51,53,55,56,57,61,63,65,66,67,80,81,82,95,96,99].includes(code);
+    return wet(a) || wet(b) ? (a >= 95 || b >= 95 ? 95 : (a >= 80 || b >= 80 ? 80 : (wet(a) ? a : b))) : a;
+  });
+  const current = { ...openMeteo.current };
+  ['temperature_2m', 'apparent_temperature', 'relative_humidity_2m'].forEach((key) => { current[key] = average(openMeteo.current?.[key], weatherApi.current?.[key]); });
+  const apiDays = new Map((weatherApi.daily?.time || []).map((time, i) => [String(time).slice(0, 10), i]));
+  const daily = { ...openMeteo.daily };
+  ['temperature_2m_max', 'temperature_2m_min', 'precipitation_probability_max'].forEach((key) => {
+    daily[key] = (openMeteo.daily?.time || []).map((time, i) => {
+      const j = apiDays.get(String(time).slice(0, 10));
+      return j == null ? openMeteo.daily?.[key]?.[i] : average(openMeteo.daily?.[key]?.[i], weatherApi.daily?.[key]?.[j]);
+    });
+  });
+  const sources = [...new Set([...(openMeteo.sources || [openMeteo.providerLabel || 'Open-Meteo']), weatherApi.providerLabel || 'WeatherAPI.com'])];
+  return { ...openMeteo, current, hourly, daily, provider: 'aggregate', providerLabel: sources.join(' + '), sources, agreement: `${sources.length} responding forecast feeds`, fetchedAt: new Date().toISOString() };
+}
+
+// The free Open-Meteo feed always remains available. When the user adds a
+// WeatherAPI key, both feeds are requested and their overlapping values are combined.
 export async function getWeather(city, apiKey = '') {
   if (apiKey && String(apiKey).trim()) {
-    try { return await getWeatherApiWeather(city, String(apiKey).trim()); }
-    catch (primaryError) {
-      try { const fallback = await getOpenMeteoWeather(city); return { ...fallback, provider: 'open-meteo', providerLabel: 'Open-Meteo', fallbackFrom: 'weatherapi', primaryError: primaryError.message }; }
-      catch (fallbackError) { throw new Error(`WeatherAPI failed (${primaryError.message}); Open-Meteo fallback also failed (${fallbackError.message}).`); }
-    }
+    const results = await Promise.allSettled([getOpenMeteoWeather(city), getWeatherApiWeather(city, String(apiKey).trim())]);
+    const [openResult, apiResult] = results;
+    if (openResult.status === 'fulfilled' && apiResult.status === 'fulfilled') return aggregateWeather(openResult.value, apiResult.value);
+    if (openResult.status === 'fulfilled') return { ...openResult.value, provider: 'open-meteo', providerLabel: 'Open-Meteo', secondaryUnavailable: 'WeatherAPI.com' };
+    if (apiResult.status === 'fulfilled') return { ...apiResult.value, provider: 'weatherapi', providerLabel: 'WeatherAPI.com', secondaryUnavailable: 'Open-Meteo' };
+    throw new Error(`Both weather providers failed. Open-Meteo: ${openResult.reason?.message || 'unavailable'}. WeatherAPI: ${apiResult.reason?.message || 'unavailable'}.`);
   }
   return getOpenMeteoWeather(city);
 }
@@ -175,4 +209,123 @@ export async function validateWeatherApiKey(apiKey) {
   const payload = await response.json();
   if (!response.ok || payload?.error) throw new Error(payload?.error?.message || 'WeatherAPI key could not be verified.');
   return true;
+}
+
+// Visual Crossing currently documents an anonymous free Timeline endpoint.
+// It is optional in the aggregate and is skipped if its public allowance changes
+// or the service rejects a request.
+function visualCode(icon = '') {
+  const s = String(icon).toLowerCase();
+  if (s.includes('thunder')) return 95;
+  if (s.includes('rain') || s.includes('showers')) return 61;
+  if (s.includes('drizzle')) return 51;
+  if (s.includes('fog')) return 45;
+  if (s.includes('snow')) return 71;
+  if (s.includes('cloudy')) return s.includes('partly') ? 2 : 3;
+  if (s.includes('clear') || s.includes('sun')) return 0;
+  return 3;
+}
+async function getVisualCrossingWeather(city) {
+  const location = `${city.latitude},${city.longitude}`;
+  const url = `https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/${encodeURIComponent(location)}?unitGroup=metric&include=current,hours,days&contentType=json`;
+  const response = await fetch(url);
+  const payload = await response.json();
+  if (!response.ok || payload?.errorCode) throw new Error(payload?.message || 'Visual Crossing request failed.');
+  const days = payload.days || [];
+  const hours = days.flatMap((day) => (day.hours || []).map((h) => ({ ...h, localTime: `${day.datetime} ${h.datetime}` })));
+  const current = payload.currentConditions || {};
+  return {
+    provider: 'visualcrossing', providerLabel: 'Visual Crossing',
+    current: { temperature_2m: current.temp, apparent_temperature: current.feelslike, relative_humidity_2m: current.humidity, is_day: current.icon?.includes('day') ? 1 : 0, precipitation: current.precip, weather_code: visualCode(current.icon), conditionText: current.conditions, wind_speed_10m: current.windspeed, wind_gusts_10m: current.windgust },
+    hourly: { time: hours.map((h) => h.localTime), temperature_2m: hours.map((h) => h.temp), apparent_temperature: hours.map((h) => h.feelslike), precipitation_probability: hours.map((h) => h.precipprob), precipitation: hours.map((h) => h.precip), weather_code: hours.map((h) => visualCode(h.icon)), wind_speed_10m: hours.map((h) => h.windspeed), wind_gusts_10m: hours.map((h) => h.windgust) },
+    daily: { time: days.map((d) => d.datetime), weather_code: days.map((d) => visualCode(d.icon)), temperature_2m_max: days.map((d) => d.tempmax), temperature_2m_min: days.map((d) => d.tempmin), precipitation_probability_max: days.map((d) => d.precipprob) },
+    fetchedAt: new Date().toISOString(), timezone: payload.timezone || city.timezone || 'auto', utcOffsetSeconds: timezoneOffsetSeconds(payload.timezone || city.timezone || 'UTC'),
+  };
+}
+
+// NiMet is a Nigeria-specific optional source. It supplies station-based daily
+// forecasts rather than an hourly coordinate forecast, so it is shown alongside
+// the aggregate instead of being falsely averaged into hourly values.
+async function getNimetForecast(city, apiKey) {
+  const cityName = String(city?.name || '').trim().toLowerCase();
+  const stationAliases = [['abuja','abuja'],['kubwa','abuja'],['gwagwalada','abuja'],['nyanya','abuja'],['karu','abuja'],['ikeja','ikeja'],['lagos','ikeja'],['kaduna','kaduna'],['kano','kano']];
+  const station = stationAliases.find(([needle]) => cityName.includes(needle))?.[1] || cityName.replace(/[^a-z0-9-]+/g, '-');
+  if (!station) throw new Error('Select a NiMet forecast station first.');
+  const response = await fetch(`https://api.nimet.gov.ng/api/forecast/${encodeURIComponent(station)}`, { headers: { 'x-api-key': apiKey } });
+  const payload = await response.json();
+  if (!response.ok || payload?.error || payload?.message?.toLowerCase?.().includes('error')) throw new Error(payload?.message || 'NiMet request failed.');
+  const localForecast = [payload.day1, payload.day2, payload.day3].filter(Boolean).map((d) => ({ date: d.date, condition: d.condition, temperature: d.temp }));
+  if (!localForecast.length) throw new Error('NiMet returned no forecast for this station.');
+  return { provider: 'nimet', providerLabel: 'NiMet', localForecast, fetchedAt: new Date().toISOString() };
+}
+
+function aggregateAdditional(base, extra) {
+  if (!extra?.hourly?.time?.length) return base;
+  const joined = aggregateWeather(base, extra);
+  const names = [...new Set([...(base.sources || [base.providerLabel || 'Open-Meteo']), extra.providerLabel])];
+  return { ...joined, provider: 'aggregate', providerLabel: names.join(' + '), sources: names, agreement: `${names.length} responding forecast feeds` };
+}
+
+export async function getAggregatedWeather(city, keys = {}) {
+  const jobs = [getOpenMeteoWeather(city), getOpenMeteoModel(city, 'ecmwf', 'ECMWF IFS'), getOpenMeteoModel(city, 'dwd-icon', 'DWD ICON Global')];
+  const labels = ['Open-Meteo Best Match', 'ECMWF IFS', 'DWD ICON Global'];
+  if (keys.weatherApi) { jobs.push(getWeatherApiWeather(city, keys.weatherApi)); labels.push('WeatherAPI.com'); }
+  jobs.push(getVisualCrossingWeather(city)); labels.push('Visual Crossing');
+  const results = await Promise.allSettled(jobs);
+  const fulfilled = results.filter((r) => r.status === 'fulfilled').map((r) => r.value);
+  if (!fulfilled.length) throw new Error('All configured weather providers failed.');
+  let combined = fulfilled[0];
+  for (let i = 1; i < fulfilled.length; i++) combined = aggregateAdditional(combined, fulfilled[i]);
+  const failed = results.map((r, i) => r.status === 'rejected' ? labels[i] : null).filter(Boolean);
+  let nimet = null;
+  if (keys.nimet) {
+    try { nimet = await getNimetForecast(city, keys.nimet); } catch (e) { failed.push('NiMet'); }
+  }
+  const sources = [...(combined.sources || [combined.providerLabel || 'Open-Meteo'])];
+  if (nimet) sources.push('NiMet');
+  return { ...combined, sources, providerLabel: sources.join(' + '), localForecast: nimet?.localForecast || null, unavailableProviders: failed, agreement: `${sources.length} source${sources.length === 1 ? '' : 's'} responded; agreement is not a calibrated probability`, fetchedAt: new Date().toISOString() };
+}
+
+export async function testVisualCrossing(city) {
+  const result = await getVisualCrossingWeather(city);
+  if (!result.current || !Number.isFinite(Number(result.current.temperature_2m))) throw new Error('Visual Crossing responded but did not return usable current conditions.');
+  return true;
+}
+export async function testNimet(city, key) {
+  const result = await getNimetForecast(city, String(key || '').trim());
+  return !!result.localForecast?.length;
+}
+export async function testOpenMeteo(city) {
+  const result = await getOpenMeteoWeather(city);
+  if (!Number.isFinite(Number(result.current?.temperature_2m))) throw new Error('Open-Meteo responded but returned no current temperature.');
+  return true;
+}
+export async function testWeatherApi(city, key) {
+  const result = await getWeatherApiWeather(city, String(key || '').trim());
+  if (!Number.isFinite(Number(result.current?.temperature_2m))) throw new Error('WeatherAPI responded but returned no current temperature.');
+  return true;
+}
+
+async function getOpenMeteoModel(city, endpoint, label) {
+  const params = new URLSearchParams({
+    latitude: String(city.latitude), longitude: String(city.longitude),
+    current: 'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_gusts_10m',
+    hourly: 'temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,wind_speed_10m,wind_gusts_10m',
+    daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max',
+    forecast_days: '2', timezone: city.timezone || 'auto',
+  });
+  const response = await fetch(`https://api.open-meteo.com/v1/${endpoint}?${params.toString()}`);
+  const data = await response.json();
+  if (!response.ok || !data?.current || !data?.hourly) throw new Error(`${label} forecast unavailable.`);
+  return { current: data.current, hourly: data.hourly, daily: data.daily, provider: endpoint, providerLabel: label, fetchedAt: new Date().toISOString(), timezone: data.timezone || city.timezone, utcOffsetSeconds: data.utc_offset_seconds || 0 };
+}
+export async function testOpenMeteoModels(city) {
+  const results = await Promise.allSettled([
+    getOpenMeteoModel(city, 'ecmwf', 'ECMWF IFS'),
+    getOpenMeteoModel(city, 'dwd-icon', 'DWD ICON Global'),
+  ]);
+  const names = ['ECMWF IFS', 'DWD ICON Global'];
+  const ok = results.filter((r) => r.status === 'fulfilled').map((r) => r.value.providerLabel);
+  if (!ok.length) throw new Error('Neither ECMWF nor DWD ICON returned a forecast.');
+  return ok;
 }

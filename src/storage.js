@@ -4,7 +4,7 @@ import { migrateFocus } from './focus';
 
 const KEY = 'taskalarm.v1';
 
-export const DEFAULT_SETTINGS = { animations: true, sound: 'jingle', ringSeconds: 20, nagMinutes: 5, reliable: false, stepGoal: 3000 };
+export const DEFAULT_SETTINGS = { animations: true, sound: 'jingle', ringSeconds: 20, nagMinutes: 5, reliable: false, stepGoal: 3000, voiceMode: 'mixed', voiceMixedThresholdMs: 400 };
 
 export const emptyState = () => ({
   version: 5,
@@ -14,6 +14,8 @@ export const emptyState = () => ({
   //   weekStart: 'YYYY-MM-DD' (the Monday of its week), startDate, createdAt }
   tasks: [],
   done: {}, // 'YYYY-MM-DD|taskId' -> { status: 'done'|'skipped', at, proof, uri, minutes }
+  healthHistory: {}, // YYYY-MM-DD -> imported Health Connect daily totals
+  historyClearedBefore: null,
   sessions: {}, // 'YYYY-MM-DD|taskId' -> { startedAt, minutes } for timers in progress
   walkSession: null, // { startedAt, expiresAt, startSteps } for the independent Walk activity
   pairSecret: null, // shared with the PC key tool
@@ -34,9 +36,18 @@ export function migrate(s) {
     return { ...rest, minutes: legacyStepsProof ? (rest.minutes || 30) : (rest.minutes || 0), createdAt: rest.createdAt || 0, weekStart: rest.weekStart || oldWeek, proof: legacyStepsProof || !rest.proof ? 'timer' : rest.proof, category: !rest.category || rest.category === 'wake' ? (kind === 'wake' ? 'other' : 'work') : rest.category };
   });
   out.done = s.done && typeof s.done === 'object' ? s.done : {};
+  out.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
+  out.healthHistory = s.healthHistory && typeof s.healthHistory === 'object' ? s.healthHistory : {};
+  out.settings.voiceMode = ['tap', 'hold', 'mixed'].includes(out.settings.voiceMode) ? out.settings.voiceMode : 'mixed';
+  out.settings.voiceMixedThresholdMs = [250, 400, 600, 800].includes(out.settings.voiceMixedThresholdMs) ? out.settings.voiceMixedThresholdMs : 400;
+  const retentionCutoff = new Date(); retentionCutoff.setHours(0, 0, 0, 0); retentionCutoff.setDate(retentionCutoff.getDate() - 179);
+  const cutoffKey = dateKey(retentionCutoff);
+  out.done = Object.fromEntries(Object.entries(out.done).filter(([key]) => key.slice(0, 10) >= cutoffKey));
+  out.healthHistory = Object.fromEntries(Object.entries(out.healthHistory).filter(([key]) => key >= cutoffKey));
+  if (out.focus?.history) out.focus.history = out.focus.history.filter((item) => new Date(item.startedAt).getTime() >= retentionCutoff.getTime());
   out.sessions = s.sessions && typeof s.sessions === 'object' ? s.sessions : {};
   out.passes = { ...base.passes, ...(s.passes || {}) };
-  out.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
+  if (out.focus?.weeklyReviews) out.focus.weeklyReviews = Object.fromEntries(Object.entries(out.focus.weeklyReviews).filter(([key]) => key >= cutoffKey));
   if (![3000, 5000, 8000, 10000].includes(out.settings.stepGoal)) out.settings.stepGoal = 3000;
   out.walkSession = s.walkSession && Number.isFinite(s.walkSession.expiresAt) ? s.walkSession : null;
   // 0.5 stored the sound as 'beep' or 'default'
@@ -60,7 +71,7 @@ export async function loadState() {
 
 export async function saveState(state) {
   try {
-    await AsyncStorage.setItem(KEY, JSON.stringify(state));
+    await AsyncStorage.setItem(KEY, JSON.stringify(migrate(state)));
   } catch (e) {
     // Storage failure should never crash the app.
   }

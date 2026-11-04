@@ -173,3 +173,33 @@ export function healthMessage(h) {
     default: return '';
   }
 }
+
+
+// Import the last 180 days of daily activity totals. This is intentionally an
+// explicit, user-triggered operation; no background historical scans are run.
+export async function importHealthHistory(onProgress = () => {}, status = null, now = new Date()) {
+  const h = status || await healthStatus();
+  if (h.state !== 'ready') throw new Error(healthMessage(h) || 'Health Connect is not ready.');
+  const output = {};
+  const days = 180;
+  for (let offset = days - 1; offset >= 0; offset -= 1) {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - offset);
+    const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1);
+    if (end > now) end.setTime(now.getTime());
+    const range = { operator: 'between', startTime: start.toISOString(), endTime: end.toISOString() };
+    const [stepsResult, caloriesResult, distanceResult] = await Promise.all([
+      h.permissions?.steps ? aggregate('Steps', range) : Promise.resolve(null),
+      h.permissions?.calories ? aggregate('ActiveCaloriesBurned', range) : Promise.resolve(null),
+      h.permissions?.distance ? aggregate('Distance', range) : Promise.resolve(null),
+    ]);
+    const key = `${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,'0')}-${String(start.getDate()).padStart(2,'0')}`;
+    output[key] = {
+      steps: typeof stepsResult?.COUNT_TOTAL === 'number' ? Math.max(0, Math.round(stepsResult.COUNT_TOTAL)) : null,
+      activeCalories: energyKcal(caloriesResult),
+      distanceMeters: distanceMeters(distanceResult),
+      importedAt: new Date().toISOString(),
+    };
+    onProgress(days - offset, days, key);
+  }
+  return output;
+}

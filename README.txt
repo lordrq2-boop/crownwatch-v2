@@ -56,3 +56,19 @@ CROWNFLOW 0.9.1 WEATHER OUTLOOK UPDATE
 
 
 CrownFlow 0.9.2 weather providers: WeatherAPI.com can be configured with a user-supplied key in Settings > Weather. The key is stored using Android secure storage and is excluded from backups. Open-Meteo remains the automatic fallback. Weather forecast times are displayed in 12-hour format with minutes.
+
+
+CROWNFLOW 0.9.4 UPDATE NOTES
+- Adds in-app voice task creation with tap-to-start/stop and hold-to-talk modes.
+- Speech is transcribed by the Android speech recognition service. Internet use depends on the phone speech service and installed language packs.
+- CrownFlow does not run a background microphone. A task is never saved automatically: review and confirm it first.
+- Adds optional two-provider weather aggregation when a WeatherAPI.com key is saved. Open-Meteo remains available without an account or key.
+- Android package ID remains com.crown.crownwatch; versionCode is now 12.
+
+
+CrownFlow 0.9.4 notes
+- Voice task control is configurable in Settings > Voice & Speech (tap, hold, or mixed).
+- Detailed History includes quick ranges, a six-month date picker, daily task/focus/activity views, and 180-day retention.
+- Health & Activity includes an explicit 180-day Health Connect import. Historical totals are stored locally.
+- App & Data includes a separate Clear history action.
+- Weather aggregation checks Open-Meteo Best Match, ECMWF IFS, DWD ICON Global, Visual Crossing, optional WeatherAPI, and optional NiMet station forecasts. Provider failures are skipped.

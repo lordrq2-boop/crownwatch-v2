@@ -2,7 +2,7 @@
   "expo": {
     "name": "CrownFlow",
     "slug": "crownflow",
-    "version": "0.9.2",
+    "version": "0.9.4",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "android": {
@@ -17,11 +17,11 @@
         "android.permission.health.READ_STEPS",
         "android.permission.health.READ_ACTIVE_CALORIES_BURNED",
         "android.permission.health.READ_DISTANCE",
-        "android.permission.health.READ_WEIGHT"
+        "android.permission.health.READ_WEIGHT",
+        "android.permission.RECORD_AUDIO"
       ],
-      "versionCode": 11,
+      "versionCode": 13,
       "blockedPermissions": [
-        "android.permission.RECORD_AUDIO",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.SYSTEM_ALERT_WINDOW",
@@ -57,6 +57,7 @@
           "recordAudioAndroid": false
         }
       ],
+      "expo-speech-recognition",
       "expo-asset",
       "expo-font",
       "expo-system-ui",

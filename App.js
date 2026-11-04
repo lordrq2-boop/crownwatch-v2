@@ -12,6 +12,7 @@ import InsightsScreen from './src/screens/InsightsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import TaskDetailScreen from './src/screens/TaskDetailScreen';
 import TaskFormScreen from './src/screens/TaskFormScreen';
+import VoiceTaskScreen from './src/screens/VoiceTaskScreen';
 import CarryOverScreen from './src/screens/CarryOverScreen';
 import TimerScreen from './src/screens/TimerScreen';
 import WalkScreen from './src/screens/WalkScreen';
@@ -26,13 +27,13 @@ import Celebration from './src/Celebration';
 import { AnimContext } from './src/anim';
 import { loadState, saveState } from './src/storage';
 import { applySchedule, clearShown, openRingtonePicker, sendTest, setupNotifications, useLastNotificationResponse } from './src/notify';
-import { activityToday, activityBetween, activityWeek, connectHealth, healthMessage, healthStatus, openHealthApp } from './src/health';
+import { activityToday, activityBetween, activityWeek, connectHealth, healthMessage, healthStatus, importHealthHistory, openHealthApp } from './src/health';
 import { ErrorBoundary, installErrorCapture } from './src/errors';
 import { addDays, atTime, dateKey, parseKey } from './src/dates';
 import { MAX_PASSES, currentWeekStart, doneKey, nextWeekStart, previousWeekTasks, tasksOfWeek, todaysItems, undoMsLeft, weekEndKey } from './src/planner';
 import { streaks, weekStrip } from './src/stats';
 import { colors } from './src/theme';
-import { getWeather, searchCities, weatherNeedsRefresh, validateWeatherApiKey } from './src/weather';
+import { getAggregatedWeather, searchCities, testNimet, testOpenMeteo, testOpenMeteoModels, testVisualCrossing, testWeatherApi, weatherNeedsRefresh } from './src/weather';
 
 installErrorCapture();
 
@@ -63,6 +64,7 @@ function Root() {
   const [healthWeek, setHealthWeek] = useState({ steps: null, activeCalories: null });
   const [weather, setWeather] = useState({ city: null, data: null, error: null });
   const [weatherApiKey, setWeatherApiKey] = useState('');
+  const [weatherProviderKeys, setWeatherProviderKeys] = useState({ weatherApi: '', nimet: '' });
   const [refreshing, setRefreshing] = useState(false);
   const [ambientPlaying, setAmbientPlaying] = useState(false);
   const ambientPlayer = useAudioPlayer(null);
@@ -98,7 +100,7 @@ function Root() {
     if (!city) return { skipped: true };
     if (!force && !weatherNeedsRefresh(weather.data?.fetchedAt, new Date(), weather.data?.timezone || city.timezone)) return { skipped: true };
     try {
-      const data = await getWeather(city, weatherApiKey);
+      const data = await getAggregatedWeather(city, weatherProviderKeys);
       const resolvedCity = { ...city, timezone: data.timezone || city.timezone };
       setWeather({ city: resolvedCity, data, error: null });
       setState((current) => current ? { ...current, settings: { ...current.settings, weatherCity: resolvedCity, weatherData: data } } : current);
@@ -107,7 +109,7 @@ function Root() {
       setWeather((current) => ({ ...current, city, error: error.message || 'Weather could not be refreshed.' }));
       return { ok: false, error };
     }
-  }, [state?.settings?.weatherCity, weather.data?.fetchedAt, weatherApiKey]);
+  }, [state?.settings?.weatherCity, weather.data?.fetchedAt, weatherProviderKeys]);
 
   const refreshAll = useCallback(async () => {
     if (refreshing) return;
@@ -188,7 +190,7 @@ function Root() {
     (async () => {
       await checkNotifications();
       const saved = addMissingWeeklyReviews(await loadState(), new Date());
-      try { const storedWeatherKey = await SecureStore.getItemAsync('crownflow.weatherApiKey'); if (storedWeatherKey) setWeatherApiKey(storedWeatherKey); } catch (e) {}
+      try { const storedWeatherKey = await SecureStore.getItemAsync('crownflow.weatherApiKey'); const nimetKey = await SecureStore.getItemAsync('crownflow.nimetApiKey'); if (storedWeatherKey) setWeatherApiKey(storedWeatherKey); setWeatherProviderKeys({ weatherApi: storedWeatherKey || '', nimet: nimetKey || '' }); } catch (e) {}
       loaded.current = true;
       setState(saved);
       setWeather({ city: saved.settings?.weatherCity || null, data: saved.settings?.weatherData || null, error: null });
@@ -197,7 +199,9 @@ function Root() {
         try {
           if (weatherNeedsRefresh(saved.settings?.weatherData?.fetchedAt, new Date(), saved.settings?.weatherData?.timezone || saved.settings?.weatherCity?.timezone)) {
             const storedWeatherKey = await SecureStore.getItemAsync('crownflow.weatherApiKey').catch(() => '');
-            const data = await getWeather(saved.settings.weatherCity, storedWeatherKey || '');
+            const nimetKey = await SecureStore.getItemAsync('crownflow.nimetApiKey').catch(() => '');
+            setWeatherProviderKeys({ weatherApi: storedWeatherKey || '', nimet: nimetKey || '' });
+            const data = await getAggregatedWeather(saved.settings.weatherCity, { weatherApi: storedWeatherKey || '', nimet: nimetKey || '' });
             saved.settings.weatherCity = { ...saved.settings.weatherCity, timezone: data.timezone || saved.settings.weatherCity.timezone };
             setWeather({ city: saved.settings.weatherCity, data, error: null });
             saved.settings.weatherData = data;
@@ -511,6 +515,19 @@ function Root() {
     refreshHealth();
   };
 
+  const importHealthData = async (onProgress = () => {}) => {
+    const h = await healthStatus(); setHealth(h);
+    if (h.state !== 'ready') throw new Error(healthMessage(h) || 'Connect Health Connect first.');
+    const imported = await importHealthHistory(onProgress, h, new Date());
+    update((s) => ({ ...s, healthHistory: { ...(s.healthHistory || {}), ...imported } }));
+    await refreshHealth();
+    return Object.keys(imported).length;
+  };
+
+  const clearHistory = () => {
+    update((s) => ({ ...s, done: {}, healthHistory: {}, historyClearedBefore: dateKey(new Date()), focus: { ...migrateFocus(s.focus), history: [], weeklyReviews: {} } }));
+  };
+
   const resetTestData = () => {
     update((s) => ({ ...s, tasks: [], done: {}, sessions: {}, walkSession: null, passes: { week: null, used: 0 } }));
     close();
@@ -547,14 +564,17 @@ function Root() {
     if (task) return frame(<TaskDetailScreen task={task} state={state} now={nowCoarse} passesLeft={passesLeft} onBack={close} onStart={prove} onSkip={skip} onUndo={() => undoTask(task)} />);
   }
   if (screen?.name === 'form') {
-    return frame(<TaskFormScreen initialWeek={screen.week} paired={paired} onSave={saveTask} onBack={close} onPair={() => setScreen({ name: 'pair', returnTo: screen })} />);
+    return frame(<TaskFormScreen initialWeek={screen.week} paired={paired} onSave={saveTask} onBack={close} onVoice={() => setScreen({ name: 'voice', week: screen.week })} onPair={() => setScreen({ name: 'pair', returnTo: screen })} />);
+  }
+  if (screen?.name === 'voice') {
+    return frame(<VoiceTaskScreen initialWeek={screen.week} settings={state.settings} onSave={saveTask} onBack={close} />);
   }
   if (screen?.name === 'carry') {
     return frame(<CarryOverScreen tasks={carrySource(screen.target)} target={screen.target} onConfirm={(chosen) => carryOver(chosen, screen.target)} onBack={close} />);
   }
   const exportData = async (data) => {
     try {
-      await Share.share({ title: 'CrownFlow backup', message: JSON.stringify({ app: 'CrownFlow', version: '0.9.0', exportedAt: new Date().toISOString(), data: { ...data, pairSecret: null } }, null, 2) });
+      await Share.share({ title: 'CrownFlow backup', message: JSON.stringify({ app: 'CrownFlow', version: '0.9.4', exportedAt: new Date().toISOString(), data: { ...data, pairSecret: null } }, null, 2) });
     } catch (error) { Alert.alert('Backup', 'Could not open the share sheet.'); }
   };
 
@@ -563,8 +583,7 @@ function Root() {
   }
 
   if (screen?.name === 'settings') {
-    return frame(<SettingsScreen paired={paired} notif={notif} testMsg={testMsg} settings={settings} health={health} stepGoal={settings.stepGoal || 3000} onBack={close} onPair={() => setScreen({ name: 'pair', returnTo: screen })} onRecheck={checkNotifications} onTest={runTest} onChange={changeSettings} onPickRingtone={openRingtonePicker} onConnectHealth={connect} onRefreshHealth={refreshHealth} onOpenHealth={openHealthApp} onResetTestData={resetTestData} focusSettings={state.focus?.settings} onFocusChange={(patch) => update((s) => ({ ...s, focus: { ...migrateFocus(s.focus), settings: { ...migrateFocus(s.focus).settings, ...patch } } }))} weather={weather} onWeatherUseLocation={useCurrentWeatherLocation} onWeatherSearch={searchCities} onWeatherSelect={selectWeatherCity} weatherApiKey={weatherApiKey} onSaveWeatherApiKey={async (key) => { const clean = String(key || '').trim(); if (clean) await validateWeatherApiKey(clean);
-        if (clean) await SecureStore.setItemAsync('crownflow.weatherApiKey', clean); else await SecureStore.deleteItemAsync('crownflow.weatherApiKey'); setWeatherApiKey(clean); const city = state?.settings?.weatherCity; if (city) { try { const data = await getWeather(city, clean); const resolvedCity = { ...city, timezone: data.timezone || city.timezone }; setWeather({ city: resolvedCity, data, error: null }); setState((current) => current ? { ...current, settings: { ...current.settings, weatherCity: resolvedCity, weatherData: data } } : current); } catch (error) { setWeather((current) => ({ ...current, city, error: error.message || 'Weather could not be refreshed.' })); throw error; } } }} onExport={() => exportData(state)} />);
+    return frame(<SettingsScreen paired={paired} notif={notif} testMsg={testMsg} settings={settings} health={health} stepGoal={settings.stepGoal || 3000} onBack={close} onPair={() => setScreen({ name: 'pair', returnTo: screen })} onRecheck={checkNotifications} onTest={runTest} onChange={changeSettings} onPickRingtone={openRingtonePicker} onConnectHealth={connect} onRefreshHealth={refreshHealth} onOpenHealth={openHealthApp} onResetTestData={resetTestData} onClearHistory={clearHistory} onImportHealthData={importHealthData} focusSettings={state.focus?.settings} onFocusChange={(patch) => update((s) => ({ ...s, focus: { ...migrateFocus(s.focus), settings: { ...migrateFocus(s.focus).settings, ...patch } } }))} weather={weather} onWeatherUseLocation={useCurrentWeatherLocation} onWeatherSearch={searchCities} onWeatherSelect={selectWeatherCity} weatherApiKey={weatherApiKey} weatherProviderKeys={weatherProviderKeys} onSaveWeatherProviderKey={async (provider, key) => { const clean = String(key || '').trim(); const storageKey = provider === 'weatherApi' ? 'crownflow.weatherApiKey' : 'crownflow.nimetApiKey'; if (clean) await SecureStore.setItemAsync(storageKey, clean); else await SecureStore.deleteItemAsync(storageKey); const next = { ...weatherProviderKeys, [provider]: clean }; setWeatherProviderKeys(next); if (provider === 'weatherApi') setWeatherApiKey(clean); return true; }} onTestOpenMeteo={async () => { if (!state?.settings?.weatherCity) throw new Error('Choose a weather city first.'); await testOpenMeteo(state.settings.weatherCity); return true; }} onTestWeatherModels={async () => { if (!state?.settings?.weatherCity) throw new Error('Choose a weather city first.'); return testOpenMeteoModels(state.settings.weatherCity); }} onTestWeatherApi={async (key) => { if (!state?.settings?.weatherCity) throw new Error('Choose a weather city first.'); return testWeatherApi(state.settings.weatherCity, key); }} onTestVisualCrossing={async () => { if (!state?.settings?.weatherCity) throw new Error('Choose a weather city first.'); await testVisualCrossing(state.settings.weatherCity); return true; }} onTestNimet={async (key) => { if (!state?.settings?.weatherCity) throw new Error('Choose a weather city first.'); return testNimet(state.settings.weatherCity, key); }} onExport={() => exportData(state)} />);
   }
 
   return frame(

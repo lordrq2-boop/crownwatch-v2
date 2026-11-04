@@ -14,7 +14,7 @@ const HALVES = ['am', 'pm'];
 
 // The name box comes first, right under the activity chips, so the keyboard never covers it.
 // The screen is not redrawn by anything outside it while it is open (no clock ticking), so typing stays smooth.
-function TaskFormScreen({ initialWeek = 'this', paired, onSave, onBack, onPair }) {
+function TaskFormScreen({ initialWeek = 'this', paired, onSave, onBack, onPair, onVoice }) {
   const insets = useInsets();
   const [category, setCategory] = useState('work');
   const [title, setTitle] = useState('');
@@ -57,6 +57,7 @@ function TaskFormScreen({ initialWeek = 'this', paired, onSave, onBack, onPair }
 
       <ScreenIn>
         <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 + Math.max(insets.bottom, 12) }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <Pressable onPress={onVoice} style={{ alignSelf: 'flex-end', flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}><Icon name="mic-outline" size={17} color={colors.gold} /><Text style={{ color: colors.gold, fontSize: 12, fontWeight: '700', marginLeft: 6 }}>Create with voice</Text></Pressable>
           <Text style={styles.label0}>What is it?</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ marginHorizontal: -20 }} contentContainerStyle={{ paddingHorizontal: 20 }}>
             {CATEGORIES.map((c) => {

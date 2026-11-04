@@ -64,8 +64,8 @@ export default function TodayScreen({ items, strip, streak, now, activity, stepG
               <Text style={type.label}>WEATHER</Text>
               <Text style={[type.title, { marginTop: 4 }]}>{weather?.city?.name || 'Set your weather city'}</Text>
               <Text style={[type.small, { marginTop: 2 }]}>{weather?.data?.current ? `${weatherLabel(weather.data.current.weather_code)} · ${feelsLikeLabel(weather.data.current.apparent_temperature)}` : (weather?.error || 'Choose a city in Settings to see local weather.')}</Text>
-              {weather?.data?.fetchedAt ? <Text style={[type.small, { marginTop: 3, fontSize: 10 }]}>Updated {new Date(weather.data.fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</Text> : null}
-              {weather?.error ? <Text style={{ color: colors.pink, fontSize: 11, marginTop: 3 }}>{weather.error}</Text> : null}
+              {weather?.data?.fetchedAt ? <Text style={[type.small, { marginTop: 3, fontSize: 10 }]}>Updated {new Date(weather.data.fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}{weather.data.providerLabel ? ` · ${weather.data.providerLabel}` : ''}</Text> : null}
+              {weather?.error ? <Text style={{ color: colors.pink, fontSize: 11, marginTop: 3 }}>{weather.error}</Text> : null}{weather?.data?.unavailableProviders?.length ? <Text style={{color:colors.muted,fontSize:10,marginTop:3}}>Unavailable feeds skipped: {weather.data.unavailableProviders.join(', ')}</Text> : null}
             </View>
             {weather?.data?.current ? <View style={{ alignItems: 'flex-end' }}>
               <Text style={{ color: colors.text, fontSize: 30, fontWeight: '800' }}>{Math.round(weather.data.current.temperature_2m)}°</Text>
@@ -87,6 +87,7 @@ export default function TodayScreen({ items, strip, streak, now, activity, stepG
                 {Number(item.rainProbability) >= 30 ? <Text style={{ color: colors.blue || colors.muted, fontSize: 9, marginTop: 2 }}>{Math.round(item.rainProbability)}% rain</Text> : null}
               </View>)}
             </View> : null}
+            {weather?.data?.localForecast?.length ? <View style={{marginTop:12,paddingTop:10,borderTopWidth:1,borderTopColor:colors.line}}><Text style={type.label}>NIMET LOCAL STATION FORECAST</Text>{weather.data.localForecast.map((item,index)=><View key={`${item.date}-${index}`} style={{flexDirection:'row',justifyContent:'space-between',paddingVertical:5}}><Text style={type.small}>{item.date}</Text><Text style={[type.small,{flex:1,textAlign:'center'}]}>{item.condition}</Text><Text style={[type.small,{fontWeight:'800'}]}>{item.temperature}</Text></View>)}</View> : null}
           </View> : null}
         </Card>
       </FadeUp> : null}

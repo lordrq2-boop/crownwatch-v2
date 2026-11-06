@@ -1,44 +1,51 @@
-import { CATEGORIES, categoryOf } from './categories';
+import { categoryOf } from './categories';
 import { weekdayIndex } from './dates';
 
 const dayWords = [
   ['monday', 0], ['tuesday', 1], ['wednesday', 2], ['thursday', 3], ['friday', 4], ['saturday', 5], ['sunday', 6],
 ];
+const numberWords = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
 
 export function parseVoiceTask(raw, now = new Date()) {
   const original = String(raw || '').trim();
   if (!original) return { ok: false, reason: 'I did not catch a task. Try speaking again.' };
-  let text = original.toLowerCase().replace(/[.,!?]/g, ' ').replace(/\s+/g, ' ').trim();
+  const text = original.toLowerCase().replace(/[’]/g, "'").replace(/\s+/g, ' ').trim();
+  const normalized = text.replace(/[.,!?]/g, ' ');
   let days = [];
   let week = 'this';
-  const tomorrow = /\btomorrow\b/.test(text);
-  const today = /\btoday\b/.test(text);
-  const weekdays = /\bweekdays\b/.test(text);
-  const everyDay = /\b(every day|daily)\b/.test(text);
-  if (tomorrow) days = [((weekdayIndex(now) + 1) % 7)];
+  const tomorrow = /\btomorrow\b/.test(normalized);
+  const today = /\btoday\b/.test(normalized);
+  const weekdays = /\bweekdays\b/.test(normalized);
+  const everyDay = /\b(every day|daily)\b/.test(normalized);
+  if (tomorrow) days = [(weekdayIndex(now) + 1) % 7];
   else if (today) days = [weekdayIndex(now)];
   else if (weekdays) days = [0, 1, 2, 3, 4];
   else if (everyDay) days = [0, 1, 2, 3, 4, 5, 6];
   else {
-    for (const [name, index] of dayWords) if (new RegExp(`\\b${name}s?\\b`).test(text)) days.push(index);
-    if (days.length) days = [...new Set(days)].sort();
+    for (const [name, index] of dayWords) if (new RegExp(`\\b${name}s?\\b`).test(normalized)) days.push(index);
+    days = [...new Set(days)].sort();
   }
   if (!days.length) days = [weekdayIndex(now)];
-  if (/\bnext week\b/.test(text)) week = 'next';
+  if (/\bnext week\b/.test(normalized)) week = 'next';
 
   let time = null;
-  const m24 = text.match(/\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/);
-  const m12 = text.match(/\b(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)\b/);
-  if (m24) time = `${String(Number(m24[1])).padStart(2, '0')}:${m24[2]}`;
+  let ambiguousTime = false;
+  let timeMatch = null;
+  const m24 = normalized.match(/\b(?:at|by|before|around)?\s*([01]?\d|2[0-3]):([0-5]\d)\b/);
+  const m12 = normalized.match(/\b(?:at|by|before|around)?\s*(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)\b/);
+  const bare = normalized.match(/\b(?:at|by|before|around)\s+(1[0-2]|0?[1-9])\b/);
+  if (m24) { timeMatch = m24[0]; time = `${String(Number(m24[1])).padStart(2, '0')}:${m24[2]}`; }
   else if (m12) {
+    timeMatch = m12[0];
     let h = Number(m12[1]) % 12;
     if (m12[3].replace(/\./g, '').startsWith('p')) h += 12;
     time = `${String(h).padStart(2, '0')}:${m12[2] || '00'}`;
-  }
+  } else if (bare) { timeMatch = bare[0]; ambiguousTime = true; time = `${String(Number(bare[1])).padStart(2, '0')}:00`; }
 
-  const durationMatch = text.match(/\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|half an?)\s*(hours?|hrs?|minutes?|mins?)\b/);
-  const numberWords = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, 'half a': 30, 'half an': 30 };
-  let minutes = durationMatch ? (numberWords[durationMatch[1]] || Number(durationMatch[1])) * (/hour|hr/.test(durationMatch[2]) ? 60 : 1) : null;
+  const durationMatch = normalized.match(/\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|half an?)\s*(hours?|hrs?|minutes?|mins?)\b/);
+  const durationNumber = durationMatch ? (numberWords[durationMatch[1]] || Number(durationMatch[1])) : null;
+  let minutes = durationMatch ? durationNumber * (/hour|hr/.test(durationMatch[2]) ? 60 : 1) : null;
+  if (durationMatch && /^half/.test(durationMatch[1])) minutes = 30;
   if (minutes != null) minutes = Math.max(5, Math.min(180, minutes));
 
   let category = 'other';
@@ -51,26 +58,42 @@ export function parseVoiceTask(raw, now = new Date()) {
     ['water', /\b(water|hydrate|drink)\b/],
     ['sleep', /\b(sleep|bed|wind down)\b/],
     ['home', /\b(clean|laundry|dishes|chores|wash)\b/],
-    ['work', /\b(work|script|edit|email|meeting|project)\b/],
+    ['work', /\b(work|script|edit|email|meeting|project|tax|taxes)\b/],
   ];
-  for (const [id, regex] of rules) if (regex.test(text)) { category = id; break; }
+  for (const [id, regex] of rules) if (regex.test(normalized)) { category = id; break; }
 
   let title = original
-    .replace(/^\s*(hey\s+)?crownflow[, ]*/i, '')
-    .replace(/^\s*(please\s+)?(create|add|make|schedule|set up)\s+(a\s+)?(new\s+)?(task|reminder)\s*(to\s+)?/i, '')
-    .replace(/\b(today|tomorrow|every day|daily|weekdays|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?\b/ig, '')
-    .replace(/\b(at\s+)?(1[0-2]|0?[1-9])(?::[0-5]\d)?\s*(a\.?m\.?|p\.?m\.?)\b/ig, '')
-    .replace(/\b(at\s+)?([01]?\d|2[0-3])[:.]([0-5]\d)\b/ig, '')
-    .replace(/\b(for\s+)?(\d+|one|two|three|four|five|six|seven|eight|nine|ten|half an?)\s*(hours?|hrs?|minutes?|mins?)\b/ig, '')
-    .replace(/\b(at|for|on)\b/ig, ' ').replace(/[.,!?]/g, ' ').replace(/\s+/g, ' ').trim();
-  title = title.replace(/^(to|that)\s+/i, '').trim();
+    .replace(/^\s*(hey\s+)?crownflow[,: ]*/i, '')
+    .replace(/^\s*(please\s+)?(can you\s+)?(create|add|make|schedule|set up)\s+(me\s+)?(a\s+)?(new\s+)?(task|reminder)\b/i, '')
+    .replace(/^\s*(for me\s+)?(to\s+do\s+|to\s+|for me to\s+)/i, '')
+    .replace(/^\s*(i need to|i want to|remind me to|i have to)\s+/i, '')
+    .replace(/\b(today|tomorrow|every day|daily|weekdays|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?\b/ig, ' ')
+    .replace(/\b(?:at|by|before|around)\s+(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*(?:a\.?m\.?|p\.?m\.?)\b/ig, ' ')
+    .replace(/\b(?:at|by|before|around)\s+(?:[01]?\d|2[0-3]):[0-5]\d\b/ig, ' ')
+    .replace(/\b(?:at|by|before|around)\s+(?:1[0-2]|0?[1-9])\b/ig, ' ')
+    .replace(/\b(?:for\s+)?(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|half an?)\s*(?:hours?|hrs?|minutes?|mins?)\b/ig, ' ')
+    .replace(/\b(?:please|and then|then|for me|me to|to do|a task|the task)\b/ig, ' ')
+    .replace(/[.,!?]/g, ' ').replace(/\s+/g, ' ').trim();
+  title = title.replace(/^(to|that|for)\s+/i, '').replace(/\s+(at|by|on|for)$/i, '').trim();
   if (title.length > 60) title = title.slice(0, 60).trim();
-  if (!title) return { ok: false, reason: 'I heard the instruction, but could not identify the task name. Please edit the words and try again.' };
+  if (!title || /^(do|it|this|that|me)$/i.test(title)) return { ok: false, reason: 'I could not confidently separate the task name from the instruction. Edit the recognised words and try again.' };
 
   const cat = categoryOf(category);
   const proof = cat.proof;
   const finalMinutes = minutes || cat.minutes;
   const missing = [];
   if (!time) missing.push('finish time');
-  return { ok: true, data: { category, title, time: time || '18:00', days, proof, minutes: proof === 'timer' ? finalMinutes : 0 }, week, missing, assumptions: { day: !today && !tomorrow && !weekdays && !everyDay && !dayWords.some(([name]) => new RegExp(`\\b${name}s?\\b`).test(text)), time: !time, duration: !durationMatch } };
+  if (ambiguousTime) missing.push('AM or PM');
+  return {
+    ok: true,
+    data: { category, title, time: time || '18:00', days, proof, minutes: proof === 'timer' ? finalMinutes : 0 },
+    week,
+    missing,
+    ambiguousTime,
+    assumptions: {
+      day: !today && !tomorrow && !weekdays && !everyDay && !dayWords.some(([name]) => new RegExp(`\\b${name}s?\\b`).test(normalized)),
+      time: !time,
+      duration: !durationMatch,
+    },
+  };
 }

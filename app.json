@@ -2,7 +2,7 @@
   "expo": {
     "name": "CrownFlow",
     "slug": "crownflow",
-    "version": "0.9.4",
+    "version": "0.9.5",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "android": {
@@ -20,7 +20,7 @@
         "android.permission.health.READ_WEIGHT",
         "android.permission.RECORD_AUDIO"
       ],
-      "versionCode": 13,
+      "versionCode": 14,
       "blockedPermissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",

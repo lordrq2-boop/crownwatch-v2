@@ -7,9 +7,8 @@ import TaskCard from '../TaskCard';
 import { colors, fonts, radius, type } from '../theme';
 import { DAY_LETTERS, fmtLongDate, greeting } from '../dates';
 import { fmtSteps } from '../categories';
-import { healthMessage } from '../health';
 import { elapsedSeconds } from '../focus';
-import { weatherLabel, feelsLikeLabel, findNextWeatherChange, getUpcomingForecast, formatForecastTime } from '../weather';
+import { weatherLabel, findNextWeatherChange, formatForecastTime } from '../weather';
 
 const fmtNumber = (n) => n == null ? '—' : Math.round(n).toLocaleString();
 const fmtDistance = (m) => m == null ? '—' : `${(m / 1000).toFixed(2)} km`;
@@ -25,7 +24,7 @@ function ActivityMetric({ icon, label, value, hint }) {
   );
 }
 
-export default function TodayScreen({ items, strip, streak, now, activity, stepGoal, health, walkSession, notif, needsPlan, activeTimerItem, onOpenTask, onAction, onAdd, onSettings, onPlan, onConnectHealth, onStartWalk, onResumeTimer, focus, onFocus, weather, refreshing, onRefresh, homeWidgets = {} }) {
+export default function TodayScreen({ items, strip, streak, now, activity, stepGoal, health, walkSession, notif, needsPlan, activeTimerItem, onOpenTask, onAction, onAdd, onSettings, onVoice, onPlan, onConnectHealth, onStartWalk, onResumeTimer, focus, onFocus, weather, refreshing, onRefresh, homeWidgets = {} }) {
   const insets = useInsets();
   const total = items.length;
   const done = items.filter((i) => i.status === 'done').length;
@@ -36,7 +35,6 @@ export default function TodayScreen({ items, strip, streak, now, activity, stepG
   const focusMinutes = Math.floor(((focus?.history || []).filter((s) => s.type === 'focus' && new Date(s.startedAt).toDateString() === now.toDateString()).reduce((n, s) => n + (s.actualFocusSeconds || 0), 0) + (focus?.active?.type === 'focus' ? elapsedSeconds(focus.active) : 0)) / 60);
   const focusGoal = focus?.settings?.dailyGoalMinutes || 120;
   const nextWeatherChange = findNextWeatherChange(weather?.data, now);
-  const upcomingWeather = getUpcomingForecast(weather?.data, now, 4);
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={{ paddingTop: insets.top + 12, paddingHorizontal: 20, paddingBottom: 30 }} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={colors.gold} colors={[colors.gold]} progressBackgroundColor={colors.panel} />}>
@@ -52,6 +50,7 @@ export default function TodayScreen({ items, strip, streak, now, activity, stepG
           {streak.current > 0 ? (
             <Pop><View style={styles.streak}><Wiggle><Icon name="flame" size={16} color={colors.gold} /></Wiggle><Text style={styles.streakText}>{streak.current}</Text></View></Pop>
           ) : null}
+          <Tap onPress={onVoice} haptic style={[styles.gear, { marginRight: 8 }]} accessibilityLabel="Create task with voice"><Icon name="mic-outline" size={21} color={colors.pink} /></Tap>
           <Tap onPress={onSettings} haptic style={styles.gear} accessibilityLabel="Settings"><Icon name="settings-outline" size={22} color={colors.text} /></Tap>
         </View>
         <Text style={[type.display, { marginTop: 14 }]}>{fmtLongDate(now)}</Text>
@@ -63,31 +62,17 @@ export default function TodayScreen({ items, strip, streak, now, activity, stepG
             <View style={{ flex: 1 }}>
               <Text style={type.label}>WEATHER</Text>
               <Text style={[type.title, { marginTop: 4 }]}>{weather?.city?.name || 'Set your weather city'}</Text>
-              <Text style={[type.small, { marginTop: 2 }]}>{weather?.data?.current ? `${weatherLabel(weather.data.current.weather_code)} · ${feelsLikeLabel(weather.data.current.apparent_temperature)}` : (weather?.error || 'Choose a city in Settings to see local weather.')}</Text>
-              {weather?.data?.fetchedAt ? <Text style={[type.small, { marginTop: 3, fontSize: 10 }]}>Updated {new Date(weather.data.fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}{weather.data.providerLabel ? ` · ${weather.data.providerLabel}` : ''}</Text> : null}
-              {weather?.error ? <Text style={{ color: colors.pink, fontSize: 11, marginTop: 3 }}>{weather.error}</Text> : null}{weather?.data?.unavailableProviders?.length ? <Text style={{color:colors.muted,fontSize:10,marginTop:3}}>Unavailable feeds skipped: {weather.data.unavailableProviders.join(', ')}</Text> : null}
+              <Text style={[type.small, { marginTop: 3 }]}>{weather?.data?.current ? weatherLabel(weather.data.current.weather_code) : 'Weather unavailable'}</Text>
             </View>
             {weather?.data?.current ? <View style={{ alignItems: 'flex-end' }}>
               <Text style={{ color: colors.text, fontSize: 30, fontWeight: '800' }}>{Math.round(weather.data.current.temperature_2m)}°</Text>
-              <Text style={type.small}>Feels {Math.round(weather.data.current.apparent_temperature)}°</Text>
-              <Text style={type.small}>H {Math.round(weather.data.daily?.temperature_2m_max?.[0] ?? 0)}° · L {Math.round(weather.data.daily?.temperature_2m_min?.[0] ?? 0)}°</Text>
+              <Text style={type.small}>Feels like {Math.round(weather.data.current.apparent_temperature)}°</Text>
             </View> : <Icon name="cloud-outline" size={28} color={colors.gold} />}
           </View>
-          {weather?.data?.current ? <View style={{ marginTop: 13, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.line }}>
+          {weather?.data?.current && nextWeatherChange ? <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.line }}>
             <Text style={type.label}>WHAT'S NEXT</Text>
-            {nextWeatherChange ? <View style={{ marginTop: 7, padding: 11, borderRadius: 12, backgroundColor: nextWeatherChange.severity >= 3 ? '#30221A' : colors.panel }}>
-              <Text style={{ color: colors.text, fontSize: 13, fontWeight: '800' }}>{nextWeatherChange.title} · {formatForecastTime(nextWeatherChange.at, weather.data, { hour: 'numeric', minute: '2-digit', hour12: true })}</Text>
-              <Text style={[type.small, { marginTop: 3 }]}>{nextWeatherChange.detail}. {weatherLabel(nextWeatherChange.weatherCode)}{Number.isFinite(nextWeatherChange.temperature) ? `, ${Math.round(nextWeatherChange.temperature)}°` : ''}.</Text>
-            </View> : null}
-            {upcomingWeather.length ? <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 11 }}>
-              {upcomingWeather.map((item, index) => <View key={`${item.time}-${index}`} style={{ alignItems: 'center', flex: 1 }}>
-                <Text style={{ color: colors.muted, fontSize: 10 }}>{formatForecastTime(item.time, weather.data, { hour: 'numeric', minute: '2-digit', hour12: true })}</Text>
-                <Text style={{ color: colors.text, fontSize: 11, fontWeight: '700', marginTop: 4 }}>{weatherLabel(item.code)}</Text>
-                <Text style={{ color: colors.text, fontSize: 13, fontWeight: '800', marginTop: 3 }}>{Number.isFinite(item.temperature) ? `${Math.round(item.temperature)}°` : '—'}</Text>
-                {Number(item.rainProbability) >= 30 ? <Text style={{ color: colors.blue || colors.muted, fontSize: 9, marginTop: 2 }}>{Math.round(item.rainProbability)}% rain</Text> : null}
-              </View>)}
-            </View> : null}
-            {weather?.data?.localForecast?.length ? <View style={{marginTop:12,paddingTop:10,borderTopWidth:1,borderTopColor:colors.line}}><Text style={type.label}>NIMET LOCAL STATION FORECAST</Text>{weather.data.localForecast.map((item,index)=><View key={`${item.date}-${index}`} style={{flexDirection:'row',justifyContent:'space-between',paddingVertical:5}}><Text style={type.small}>{item.date}</Text><Text style={[type.small,{flex:1,textAlign:'center'}]}>{item.condition}</Text><Text style={[type.small,{fontWeight:'800'}]}>{item.temperature}</Text></View>)}</View> : null}
+            <Text style={{ color: colors.text, fontSize: 13, fontWeight: '800', marginTop: 6 }}>{nextWeatherChange.title} · {formatForecastTime(nextWeatherChange.at, weather.data, { hour: 'numeric', minute: '2-digit', hour12: true })}</Text>
+            <Text style={[type.small, { marginTop: 3 }]}>{nextWeatherChange.detail}. {weatherLabel(nextWeatherChange.weatherCode)}{Number.isFinite(nextWeatherChange.temperature) ? `, ${Math.round(nextWeatherChange.temperature)}°` : ''}.</Text>
           </View> : null}
         </Card>
       </FadeUp> : null}
@@ -97,8 +82,6 @@ export default function TodayScreen({ items, strip, streak, now, activity, stepG
           <View style={styles.activityTop}>
             <View style={{ flex: 1 }}>
               <Text style={type.label}>TODAY'S ACTIVITY</Text>
-              <Text style={styles.activityTitle}>Your movement</Text>
-              <Text style={[type.small, { marginTop: 3 }]}>{health?.state === 'ready' ? 'Synced from Health Connect' : healthMessage(health || { state: 'unknown' }) || 'Connect Health Connect to see your activity.'}</Text>
             </View>
             <View style={styles.stepRing}>
               <ProgressRing size={94} stroke={9} progress={stepProgress}>
